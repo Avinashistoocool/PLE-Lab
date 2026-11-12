@@ -1,5 +1,5 @@
 // Animated L×p heatmap (DESIGN_IDEAS #16) and interactive L×L layer-similarity matrix (#18-lite).
-import { d3, theme, layerColor, diverging, tween, tip, tipHtml, esc, vis, fmt, mount, hidpiCanvas, widthOf, onResize, segmented, alpha, dur } from './core.js';
+import { d3, theme, layerColor, diverging, tween, tip, tipHtml, esc, vis, fmt, mount, hidpiCanvas, widthOf, onResize, segmented, alpha, dur, inkOn } from './core.js';
 
 /**
  * Token heatmap: rows = layers, columns = dims, diverging colour; values cross-fade on update();
@@ -220,7 +220,7 @@ export function similarity(el, data, opts = {}) {
       .attr('width', d => (cs - 2) * sz(d)).attr('height', d => (cs - 2) * sz(d))
       .attr('fill', d => (d.i === d.j && mode !== 'diff' ? th.surface3 : div(d.v)));
     sel.select('text').attr('x', cs / 2).attr('y', cs / 2)
-      .attr('fill', d => (Math.abs(d.v) > 0.55 && d.i !== d.j ? '#0b0f17' : th.muted))
+      .attr('fill', d => (Math.abs(d.v) > 0.55 && d.i !== d.j ? (inkOn(div(d.v)) || th.text) : th.muted))
       .text(d => (cs > 34 ? (d.i === d.j && mode !== 'diff' ? '' : fmtS(d.v)) : ''));
     const labs = (cls, xy) => g.selectAll(`text.${cls}`).data(d3.range(L)).join('text').attr('class', cls)
       .attr('font-size', 11).attr('font-weight', 600).attr('fill', l => layerColor(th, l)).text(l => `L${l}`).each(xy);

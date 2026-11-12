@@ -30,12 +30,12 @@ export function inkFor(rgb) {
   if (!m) return null;
   const lin = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
   const L = 0.2126 * lin(+m[1]) + 0.7152 * lin(+m[2]) + 0.0722 * lin(+m[3]);
-  return L > 0.2 ? '#06101c' : '#ffffff';
+  return L > 0.22 ? '#1c1a16' : '#f7f1e3';
 }
 
 // ---- theme -------------------------------------------------------------------------
 const themeListeners = new Set();
-export const currentTheme = () => (html.dataset.theme === 'light' ? 'light' : 'dark');
+export const currentTheme = () => (html.dataset.theme === 'dark' ? 'dark' : 'light');
 export function setTheme(t) {
   html.dataset.theme = t;
   try { localStorage.setItem(THEME_KEY, t); } catch { /* private mode */ }

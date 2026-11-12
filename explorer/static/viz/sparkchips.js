@@ -1,5 +1,5 @@
 // Sparkline chips (DESIGN_IDEAS #10): token chips with a tiny per-layer bar sparkline under each piece.
-import { theme, layerColor, diverging, viridis, tip, tipHtml, esc, vis, fmt, mount } from './core.js';
+import { theme, layerColor, diverging, viridis, tip, tipHtml, esc, vis, fmt, mount, inkOn } from './core.js';
 
 /** SVG string for one sparkline. values: number[L]; vmax: shared scale. */
 export function sparkSvg(values, vmax, th = theme()) {
@@ -36,11 +36,12 @@ export function render(el, data, opts = {}) {
     return a.loss[i] == null ? th.surface2 : viridis(a.loss[i] / mx);
   }
 
+  const chipStyle = bg => `background-color:${bg};color:${inkOn(bg) || th.text}`;
   function draw() {
     th = theme();
     const key = o.spark === 'ratio' ? 'contrib_ratio' : 'gate';
     const vmax = Math.max(...a[key].flat(), 1e-9);
-    root.innerHTML = a.tokens.map((t, i) => `<span class="viz-chip${o.selected === i ? ' sel' : ''}" role="listitem" tabindex="0" data-i="${i}" style="background-color:${colorFor(i)}">`
+    root.innerHTML = a.tokens.map((t, i) => `<span class="viz-chip${o.selected === i ? ' sel' : ''}" role="listitem" tabindex="0" data-i="${i}" style="${chipStyle(colorFor(i))}">`
       + `<span>${esc(vis(t.piece))}</span>${sparkSvg(a[key][i], vmax, th)}</span>`).join('');
   }
 
@@ -92,7 +93,7 @@ export function render(el, data, opts = {}) {
     /** Re-colours chips in place (CSS transition = colour morph, e.g. 'loss' → 'delta' after ablation). */
     setColor(mode, layer) {
       o.color = mode; if (layer != null) o.layer = layer;
-      root.querySelectorAll('.viz-chip').forEach((c, i) => { c.style.transitionDelay = `${Math.min(12 * i, 500)}ms`; c.style.backgroundColor = colorFor(i); });
+      root.querySelectorAll('.viz-chip').forEach((c, i) => { c.style.transitionDelay = `${Math.min(12 * i, 500)}ms`; const bg = colorFor(i); c.style.backgroundColor = bg; c.style.color = inkOn(bg) || th.text; });
     },
     destroy() { tip.hide(); el.innerHTML = ''; },
   };

@@ -1,13 +1,14 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="dark light">
+  <meta name="color-scheme" content="light dark">
   <title>PLE Explorer</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23070a12'/%3E%3Cg fill='none' stroke-width='2.2' stroke-linecap='round'%3E%3Cpath d='M8 10h16' stroke='%234de1ff'/%3E%3Cpath d='M8 16h16' stroke='%237fb0ff'/%3E%3Cpath d='M8 22h16' stroke='%23a67cff'/%3E%3C/g%3E%3Cpath d='M16 4v24' stroke='%23fff' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E">
-  <link rel="preload" href="/static/vendor/fonts/Inter-var-latin.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="preload" href="/static/vendor/fonts/JetBrainsMono-var-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M3 9h18l8 7-8 7H3z' fill='%23f2ebdd' stroke='%231c1a16' stroke-width='2'/%3E%3Ccircle cx='22' cy='16' r='2.4' fill='%23d9381e'/%3E%3Cpath d='M7 14h9M7 18h6' stroke='%231c1a16' stroke-width='2'/%3E%3C/svg%3E">
+  <link rel="preload" href="/static/vendor/fonts/Newsreader-var-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/static/vendor/fonts/AtkinsonHyperlegible-400-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/static/vendor/fonts/MartianMono-var-latin.woff2" as="font" type="font/woff2" crossorigin>
   <script>
     // Apply the saved theme before first paint (no flash).
     try { const t = localStorage.getItem('ple.theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}
@@ -17,26 +18,43 @@
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
-<canvas id="backdrop" aria-hidden="true"></canvas>
 <div id="progress" class="progress" aria-hidden="true"><i></i></div>
+
+<div class="masthead">
+  <div class="mast-top"><span>Vol. I · Per-Layer Embeddings</span><span>Plates, census &amp; field notes</span></div>
+  <div class="mast-rule" aria-hidden="true"></div>
+  <div class="mast-title">
+    <h1><b>PLE</b> Explorer</h1>
+    <p class="mast-sub">A catalogue of per-layer token embeddings</p>
+  </div>
+  <section class="kpis" aria-label="Run at a glance">
+    <div class="kpi kpi-run" style="--i:0"><span class="kpi-label">specimen run</span>
+      <div class="run-pill" title="Selected run">
+        <span class="run-dot" aria-hidden="true"></span>
+        <label for="run" class="sr-only">run</label>
+        <select id="run" aria-label="Run"></select>
+      </div>
+      <span id="run-info" class="run-info"></span>
+    </div>
+    <div class="kpi" style="--i:1"><span class="kpi-label">PLE table</span><span class="kpi-val"><b id="kpi-table">–</b><i>params</i></span></div>
+    <div class="kpi" style="--i:2"><span class="kpi-label">layers × dims</span><span class="kpi-val"><b id="kpi-L">–</b><i>×</i><b id="kpi-p">–</b></span></div>
+    <div class="kpi" style="--i:3"><span class="kpi-label">d<sub>model</sub></span><span class="kpi-val"><b id="kpi-d">–</b></span></div>
+    <div class="kpi" style="--i:4"><span class="kpi-label">dense</span><span class="kpi-val"><b id="kpi-dense">–</b><i>params</i></span></div>
+    <div class="kpi" style="--i:5"><span class="kpi-label">tokens seen</span><span class="kpi-val"><b id="kpi-tokens">–</b></span></div>
+    <div class="kpi kpi-accent" style="--i:6"><span class="kpi-label">val loss</span><span class="kpi-val"><b id="kpi-loss">–</b><i>nats</i></span></div>
+    <button class="info" data-info="kpi"></button>
+  </section>
+</div>
 
 <header class="appbar">
   <a class="brand" href="#about" aria-label="PLE Explorer, about">
     <svg class="logo" viewBox="0 0 40 40" aria-hidden="true">
-      <defs>
-        <linearGradient id="lg-slab" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="var(--accent)"/><stop offset="1" stop-color="var(--gate)"/></linearGradient>
-        <linearGradient id="lg-beam" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".5" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
-      </defs>
-      <g class="slabs">
-        <path d="M6 12 20 6l14 6-14 6z" fill="url(#lg-slab)" opacity=".95"/>
-        <path d="M6 19.5 20 13.5l14 6-14 6z" fill="url(#lg-slab)" opacity=".6"/>
-        <path d="M6 27 20 21l14 6-14 6z" fill="url(#lg-slab)" opacity=".35"/>
-      </g>
-      <rect class="beam" x="19" y="1" width="2" height="38" rx="1" fill="url(#lg-beam)"/>
+      <path class="tag" d="M3 11h24l10 9-10 9H3z"/>
+      <circle class="hole" cx="28" cy="20" r="2.6"/>
+      <path class="ln hot" d="M8 16h13"/><path class="ln" d="M8 20h10"/><path class="ln" d="M8 24h12"/>
     </svg>
-    <span class="brand-text"><b>PLE</b> Explorer<small>per-layer embeddings · instrument</small></span>
+    <span class="brand-text"><span><b>PLE</b> Explorer</span><small>specimen ledger</small></span>
   </a>
-
   <nav id="tabs" class="tabs" role="tablist" aria-label="Views">
     <button role="tab" data-tab="token" class="active" aria-selected="true" aria-controls="tab-token" id="tabbtn-token"><span class="tab-num">1</span>Token</button>
     <button role="tab" data-tab="map" aria-selected="false" aria-controls="tab-map" id="tabbtn-map"><span class="tab-num">2</span>Map</button>
@@ -48,12 +66,6 @@
   </nav>
 
   <div class="actions">
-    <div class="run-pill" title="Selected run">
-      <span class="run-dot" aria-hidden="true"></span>
-      <label for="run" class="sr-only">run</label>
-      <select id="run" aria-label="Run"></select>
-      <span id="run-info" class="run-info"></span>
-    </div>
     <button id="open-palette" class="iconbtn kbd-btn" type="button" aria-label="Open command palette (Ctrl+K)" title="Command palette">
       <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4"/></svg><kbd>Ctrl K</kbd>
     </button>
@@ -67,15 +79,7 @@
   </div>
 </header>
 
-<section class="kpis" aria-label="Run at a glance">
-  <div class="kpi"><span class="kpi-label">PLE table</span><span class="kpi-val"><b id="kpi-table">–</b><i>params</i></span></div>
-  <div class="kpi"><span class="kpi-label">layers × dims</span><span class="kpi-val"><b id="kpi-L">–</b><i>×</i><b id="kpi-p">–</b></span></div>
-  <div class="kpi"><span class="kpi-label">d<sub>model</sub></span><span class="kpi-val"><b id="kpi-d">–</b></span></div>
-  <div class="kpi"><span class="kpi-label">dense</span><span class="kpi-val"><b id="kpi-dense">–</b><i>params</i></span></div>
-  <div class="kpi"><span class="kpi-label">tokens seen</span><span class="kpi-val"><b id="kpi-tokens">–</b></span></div>
-  <div class="kpi kpi-accent"><span class="kpi-label">val loss</span><span class="kpi-val"><b id="kpi-loss">–</b><i>nats</i></span></div>
-  <button class="info" data-info="kpi"></button>
-</section>
+
 
 
 
@@ -125,7 +129,7 @@
       </div>
     </div>
     <div class="card">
-      <div class="card-head"><h3>Vectors <small>L × p heatmap of the token part (blue −, orange +)</small></h3><button class="info" data-info="vectors"></button></div>
+      <div class="card-head"><h3>Vectors <small>L × p heatmap of the token part (green/brass −, red +)</small></h3><button class="info" data-info="vectors"></button></div>
       <div id="token-heat" class="chart"></div>
     </div>
     <div class="card">
@@ -157,6 +161,7 @@
     <div id="map3d-note" class="notice hidden" role="status"></div>
     <div class="card map-card">
       <div id="map3d" class="map3d hidden" role="region" aria-label="3D token map"></div>
+      <p class="plate-cap"><b>Plate I.</b> Token specimens in shared PCA space.</p>
       <div id="map-plot" class="chart"></div>
       <p class="hint" id="map-hint">PCA of the token-part slice for the chosen layer. Hover for the token, click to open it in the Token tab. Labels shown for the 40 most frequent tokens.</p>
     </div>
@@ -371,7 +376,7 @@
         <li><b>Neighbours</b>: tokens with similar slices in a layer are treated alike by that layer's PLE path. Full rows are cleanly semantic: <span class="tok">·happy</span> → glad, lucky, cheerful.</li>
         <li><b>Gate magnitude</b>: mean |gelu(W<sub>gate</sub>h)|. High = the layer is reading a lot of this token's slice at this position.</li>
         <li><b>Contribution ratio</b>: size of the PLE update relative to the residual stream; how loudly PLE "speaks" in each layer.</li>
-        <li><b>Δloss</b>: ablated − normal loss. Orange tokens got harder to predict without PLE, so the model relies on PLE for them.</li>
+        <li><b>Δloss</b>: ablated − normal loss. Red tokens got harder to predict without PLE, so the model relies on PLE for them.</li>
       </ul>
       <p class="muted">The 0.009 val-loss gap to the baseline is within single-seed noise. See <code>docs/EXPLORER.md</code> for details.</p>
     </section>

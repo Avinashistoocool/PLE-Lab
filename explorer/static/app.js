@@ -23,7 +23,6 @@ import { toast, clearToasts, countUp, initPopovers, segmented, syncSegments, ske
   toggleTheme, currentTheme, onTheme, reducedMotion } from './shell/ui.js';
 import { INFO } from './shell/info.js';
 import { createPalette } from './shell/palette.js';
-import { startBackdrop } from './shell/backdrop.js';
 import { initAbout } from './shell/about.js';
 import * as viz from './viz/index.js';
 
@@ -394,7 +393,7 @@ const map3d = {
         if (typeof m.mountMap3D !== 'function') throw new Error('map3d.js has no mountMap3D export');
         const handle = await m.mountMap3D($('map3d'), {
           run: state.run.name, api, onTokenClick: id => openToken(id),
-          theme: { bg: cssv('--bg'), fg: cssv('--text'), accent: cssv('--accent'), accent2: cssv('--ple'), muted: cssv('--text-muted') },
+          theme: { bg: cssv('--plate-bg'), fg: cssv('--plate-fg'), accent: cssv('--plate-accent'), accent2: cssv('--plate-accent2'), muted: cssv('--plate-muted') },
         });
         if (!this.active || state.tab !== 'map') { try { handle.destroy(); } catch { /* ignore */ } $('map3d').innerHTML = ''; return; }
         this.handle = handle;
@@ -688,7 +687,6 @@ function wireShell() {
   $('shortcuts').addEventListener('mousedown', ev => { if (ev.target.id === 'shortcuts') hideShortcuts(); });
   onTheme(t => {
     $('theme-toggle').setAttribute('aria-pressed', String(t === 'light'));
-    backdrop?.refresh();
     killViz();
     stale.delete(state.tab);
     rerender();
@@ -781,8 +779,9 @@ function wire() {
 // default map mode: saved choice, else 3D when WebGL is available
 let savedMode = null; try { savedMode = localStorage.getItem('ple.mapmode'); } catch { /* ignore */ }
 $('map-mode').value = savedMode === '2d' || savedMode === '3d' ? savedMode : (map3d.webgl() ? '3d' : '2d');
-let backdrop = null;
-try { backdrop = startBackdrop($('backdrop'), { reducedMotion }); } catch (e) { console.warn('backdrop disabled', e); }
+// page-load choreography: stagger index per card (style.css reads --i), then switch to tab ink-wipes
+document.querySelectorAll('.tab').forEach(t => t.querySelectorAll('.searchbar, .about-hero, .card').forEach((el, i) => el.style.setProperty('--i', String(Math.min(i, 12)))));
+setTimeout(() => document.documentElement.classList.add('settled'), reducedMotion() ? 0 : 1800);
 $('theme-toggle').setAttribute('aria-pressed', String(currentTheme() === 'light'));
 wireShell();
 wire();

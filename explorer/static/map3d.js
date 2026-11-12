@@ -92,28 +92,27 @@ const STYLE_ID = 'm3d-style';
 let styleRefs = 0;
 const CSS = `
 .m3d-root{position:relative;width:100%;height:100%;min-height:320px;overflow:hidden;border-radius:inherit;
-  background:radial-gradient(ellipse at 50% 45%, #161b2e 0%, #0b0d16 55%, #05060a 100%);color:var(--m3d-fg);
-  font:13px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;outline:none;user-select:none;-webkit-user-select:none}
+  background:radial-gradient(ellipse at 50% 45%, #2a231b 0%, #15120e 55%, #070605 100%);color:var(--m3d-fg);
+  font:13px/1.4 "Atkinson Hyperlegible","Segoe UI",sans-serif;outline:none;user-select:none;-webkit-user-select:none}
 .m3d-root canvas.m3d-canvas{position:absolute;inset:0;display:block;width:100%;height:100%;cursor:grab}
 .m3d-root canvas.m3d-canvas.m3d-hovering{cursor:pointer}
 .m3d-root canvas.m3d-canvas:active{cursor:grabbing}
 .m3d-labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}
-.m3d-label{font:500 11px/1 ui-monospace,SFMono-Regular,Consolas,monospace;color:#e6ebff;white-space:pre;
+.m3d-label{font:400 10px/1 "Martian Mono",Consolas,monospace;color:#e6ebff;white-space:pre;
   padding:2px 5px;border-radius:4px;background:rgba(10,12,20,.45);border:1px solid rgba(255,255,255,.06);
   text-shadow:0 0 6px rgba(0,0,0,.9);pointer-events:none;transition:opacity .25s;margin-top:-14px}
 .m3d-label.m3d-nb{color:#fff;background:rgba(20,24,40,.7);border-color:var(--m3d-accent2);font-size:12px}
-.m3d-label.m3d-sel{color:#fff;background:linear-gradient(90deg,var(--m3d-accent),var(--m3d-accent2));border:none;
-  font-size:13px;font-weight:700;padding:3px 8px;box-shadow:0 0 18px var(--m3d-accent);margin-top:-22px}
+.m3d-label.m3d-sel{color:#15130f;background:var(--m3d-accent);border:1px solid var(--m3d-fg);
+  font-size:12px;font-weight:600;padding:3px 8px;border-radius:1px 8px 8px 1px;box-shadow:2px 2px 0 rgba(0,0,0,.5);margin-top:-22px}
 .m3d-label.m3d-lm{font-size:10px;font-weight:700;background:rgba(5,6,10,.8);color:var(--m3d-accent);
   border:1px solid var(--m3d-accent);border-radius:9px;min-width:12px;text-align:center;padding:2px 4px;margin-top:-18px}
-.m3d-label.m3d-cl{font:600 11px system-ui,sans-serif;color:#fff;background:rgba(8,10,18,.72);border-left:3px solid var(--c);padding:3px 7px;transition:opacity .4s}
+.m3d-label.m3d-cl{font:italic 500 13px "Newsreader",Georgia,serif;color:#fff;background:rgba(8,10,18,.72);border-left:3px solid var(--c);padding:3px 7px;transition:opacity .4s}
 .m3d-label.m3d-axis{background:none;border:none;color:var(--m3d-muted);opacity:.55;font-size:10px}
-.m3d-panel{position:absolute;background:rgba(14,16,26,.62);backdrop-filter:blur(12px) saturate(140%);
-  -webkit-backdrop-filter:blur(12px) saturate(140%);border:1px solid rgba(255,255,255,.08);border-radius:12px;
-  box-shadow:0 8px 32px rgba(0,0,0,.35);pointer-events:auto}
+.m3d-panel{position:absolute;background:rgba(20,17,13,.88);border:1px solid rgba(233,225,207,.28);border-radius:2px;
+  box-shadow:3px 3px 0 rgba(0,0,0,.35);pointer-events:auto}
 .m3d-title{position:absolute;left:18px;top:14px;pointer-events:none;max-width:min(560px,60%)}
-.m3d-h{font-size:17px;font-weight:650;letter-spacing:.2px;color:#fff;text-shadow:0 2px 12px rgba(0,0,0,.6)}
-.m3d-h b{background:linear-gradient(90deg,var(--m3d-accent),var(--m3d-accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
+.m3d-h{font:400 22px/1.15 "Newsreader",Georgia,serif;letter-spacing:-.01em;color:#fff;text-shadow:0 2px 12px rgba(0,0,0,.6)}
+.m3d-h b{font-style:italic;font-weight:500;color:var(--m3d-accent)}
 .m3d-sub{color:var(--m3d-muted);font-size:12px;margin-top:3px}
 .m3d-controls{right:14px;top:14px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;width:230px}
 .m3d-row{display:flex;align-items:center;gap:8px;justify-content:space-between}
@@ -122,8 +121,8 @@ const CSS = `
   border-radius:7px;padding:4px 7px;font:inherit;outline:none}
 .m3d-root select{flex:1;max-width:140px}
 .m3d-root select option{background:#141724}
-.m3d-root input[type=text]{width:100%;box-sizing:border-box;padding:6px 9px;font-family:ui-monospace,Consolas,monospace}
-.m3d-root input[type=text]:focus,.m3d-root select:focus{border-color:var(--m3d-accent);box-shadow:0 0 0 3px rgba(96,165,250,.18)}
+.m3d-root input[type=text]{width:100%;box-sizing:border-box;padding:6px 9px;font-family:"Martian Mono",Consolas,monospace}
+.m3d-root input[type=text]:focus,.m3d-root select:focus{border-color:var(--m3d-accent);box-shadow:0 0 0 1px var(--m3d-accent)}
 .m3d-status{font-size:11px;color:var(--m3d-muted);min-height:14px}
 .m3d-switch{display:flex;align-items:center;gap:8px;cursor:pointer}
 .m3d-switch input{appearance:none;-webkit-appearance:none;width:30px;height:17px;border-radius:9px;background:rgba(255,255,255,.12);
@@ -132,8 +131,8 @@ const CSS = `
 .m3d-switch input:checked{background:var(--m3d-accent)}
 .m3d-switch input:checked::after{transform:translateX(13px);background:#fff}
 .m3d-timeline{left:50%;bottom:16px;transform:translateX(-50%);display:flex;align-items:center;gap:12px;padding:9px 14px;width:min(540px,calc(100% - 40px));box-sizing:border-box}
-.m3d-play{width:34px;height:34px;border-radius:50%;border:none;cursor:pointer;color:#fff;font-size:13px;flex:none;
-  background:linear-gradient(135deg,var(--m3d-accent),var(--m3d-accent2));box-shadow:0 0 16px rgba(96,165,250,.45)}
+.m3d-play{width:34px;height:34px;border-radius:50%;border:1px solid var(--m3d-fg);cursor:pointer;color:#15130f;font-size:13px;flex:none;
+  background:var(--m3d-accent)}
 .m3d-play:hover{filter:brightness(1.15)}
 .m3d-slider{flex:1;display:flex;flex-direction:column;gap:2px}
 .m3d-slider input{width:100%;accent-color:var(--m3d-accent);margin:0;cursor:pointer}
@@ -145,7 +144,7 @@ const CSS = `
 .m3d-legend h4,.m3d-card h4{margin:0 0 6px;font-size:10.5px;text-transform:uppercase;letter-spacing:.7px;color:var(--m3d-muted);font-weight:600}
 .m3d-li{display:flex;align-items:center;gap:7px;padding:2px 4px;border-radius:6px;cursor:pointer;white-space:nowrap;overflow:hidden}
 .m3d-li:hover,.m3d-li.on{background:rgba(255,255,255,.07)}
-.m3d-li .tok{overflow:hidden;text-overflow:ellipsis;color:var(--m3d-fg);font-family:ui-monospace,Consolas,monospace;font-size:11px}
+.m3d-li .tok{overflow:hidden;text-overflow:ellipsis;color:var(--m3d-fg);font-family:"Martian Mono",Consolas,monospace;font-size:11px}
 .m3d-sw{width:10px;height:10px;border-radius:50%;flex:none;box-shadow:0 0 8px currentColor}
 .m3d-n{color:var(--m3d-muted);font-variant-numeric:tabular-nums;min-width:30px;text-align:right}
 .m3d-ramp{height:10px;border-radius:5px;margin:4px 0 3px;position:relative}
@@ -155,8 +154,7 @@ const CSS = `
 .m3d-card{right:14px;top:228px;width:262px;padding:12px 14px;max-height:calc(100% - 320px);overflow:auto;transition:opacity .25s,transform .25s}
 .m3d-card.m3d-hidden{opacity:0;transform:translateX(16px);pointer-events:none}
 .m3d-ch{display:flex;align-items:baseline;gap:8px}
-.m3d-ch .tok{font:700 18px ui-monospace,Consolas,monospace;color:#fff;background:linear-gradient(90deg,var(--m3d-accent),var(--m3d-accent2));
-  -webkit-background-clip:text;background-clip:text;color:transparent;overflow:hidden;text-overflow:ellipsis;white-space:pre}
+.m3d-ch .tok{font:600 16px "Martian Mono",Consolas,monospace;color:var(--m3d-accent);overflow:hidden;text-overflow:ellipsis;white-space:pre}
 .m3d-ch .id{color:var(--m3d-muted);font-size:11px}
 .m3d-x{margin-left:auto;background:none;border:none;color:var(--m3d-muted);cursor:pointer;font-size:16px;line-height:1}
 .m3d-x:hover{color:#fff}
@@ -169,7 +167,7 @@ const CSS = `
 .m3d-init{position:absolute;left:0;right:0;border-top:1px dashed rgba(255,255,255,.35)}
 .m3d-nb-row{display:flex;align-items:center;gap:7px;padding:3px 5px;border-radius:6px;cursor:pointer;font-size:12px}
 .m3d-nb-row:hover{background:rgba(255,255,255,.08)}
-.m3d-nb-row .tok{font-family:ui-monospace,Consolas,monospace;white-space:pre;overflow:hidden;text-overflow:ellipsis;flex:1}
+.m3d-nb-row .tok{font-family:"Martian Mono",Consolas,monospace;white-space:pre;overflow:hidden;text-overflow:ellipsis;flex:1}
 .m3d-sim{width:52px;height:4px;border-radius:2px;background:rgba(255,255,255,.08);overflow:hidden;flex:none}
 .m3d-sim i{display:block;height:100%;background:linear-gradient(90deg,var(--m3d-accent),var(--m3d-accent2))}
 .m3d-simv{color:var(--m3d-muted);font-size:10.5px;width:34px;text-align:right;font-variant-numeric:tabular-nums}
@@ -177,12 +175,12 @@ const CSS = `
 .m3d-ov div{flex:1;text-align:center;font-size:9.5px;color:var(--m3d-muted)}
 .m3d-ov div i{display:block;height:16px;border-radius:3px;margin-bottom:2px;background:var(--m3d-accent2)}
 .m3d-btn{width:100%;margin-top:10px;padding:7px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.12);cursor:pointer;
-  color:#fff;font:inherit;font-weight:600;background:linear-gradient(90deg,rgba(96,165,250,.25),rgba(167,139,250,.25))}
-.m3d-btn:hover{background:linear-gradient(90deg,rgba(96,165,250,.4),rgba(167,139,250,.4))}
-.m3d-tip{position:absolute;pointer-events:none;padding:7px 10px;border-radius:9px;background:rgba(10,12,20,.88);
+  color:#fff;font:inherit;font-weight:600;background:rgba(255,90,54,.18)}
+.m3d-btn:hover{background:rgba(255,90,54,.32)}
+.m3d-tip{position:absolute;pointer-events:none;padding:7px 10px;border-radius:2px;background:rgba(20,17,13,.94);
   border:1px solid rgba(255,255,255,.12);box-shadow:0 6px 24px rgba(0,0,0,.5);font-size:11.5px;color:var(--m3d-muted);
   white-space:nowrap;transform:translate(14px,14px);z-index:5}
-.m3d-tip b{font:700 14px ui-monospace,Consolas,monospace;color:#fff;white-space:pre}
+.m3d-tip b{font:700 14px "Martian Mono",Consolas,monospace;color:#fff;white-space:pre}
 .m3d-tip .m3d-sw{display:inline-block;width:8px;height:8px;margin-right:4px;vertical-align:middle}
 .m3d-hidden{display:none}
 .m3d-card.m3d-hidden{display:block}
@@ -287,14 +285,14 @@ function backgroundTexture(bg) {
   const c = document.createElement('canvas'); c.width = c.height = 512;
   const g = c.getContext('2d');
   const grd = g.createRadialGradient(256, 230, 10, 256, 256, 380);
-  grd.addColorStop(0, '#1b2140'); grd.addColorStop(0.35, '#10142a'); grd.addColorStop(0.75, bg || '#080a12'); grd.addColorStop(1, '#030409');
+  grd.addColorStop(0, '#2b241b'); grd.addColorStop(0.35, '#1c1813'); grd.addColorStop(0.75, bg || '#120f0b'); grd.addColorStop(1, '#060504');
   g.fillStyle = grd; g.fillRect(0, 0, 512, 512);
   // faint nebula tint
   const n = g.createRadialGradient(360, 150, 0, 360, 150, 220);
-  n.addColorStop(0, 'rgba(120,80,200,0.10)'); n.addColorStop(1, 'rgba(120,80,200,0)');
+  n.addColorStop(0, 'rgba(255,90,54,0.07)'); n.addColorStop(1, 'rgba(255,90,54,0)');
   g.fillStyle = n; g.fillRect(0, 0, 512, 512);
   const m = g.createRadialGradient(130, 380, 0, 130, 380, 200);
-  m.addColorStop(0, 'rgba(40,120,200,0.08)'); m.addColorStop(1, 'rgba(40,120,200,0)');
+  m.addColorStop(0, 'rgba(201,162,39,0.06)'); m.addColorStop(1, 'rgba(201,162,39,0)');
   g.fillStyle = m; g.fillRect(0, 0, 512, 512);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
@@ -407,7 +405,7 @@ export async function mountMap3D(container, ctx = {}) {
     stars.name = 'stars';
     decor.add(stars);
 
-    const grid = new THREE.GridHelper(40, 40, 0x3b4a7a, 0x1d2440);
+    const grid = new THREE.GridHelper(40, 40, 0x6b5d45, 0x3a3226);
     grid.material.transparent = true; grid.material.opacity = 0.16; grid.material.depthWrite = false;
     grid.position.y = -9;
     decor.add(grid);

@@ -54,15 +54,25 @@ warning and the API returns HTTP 400 for them. They are used in the Compare tab.
 
 ## UI
 
-The shell follows the "Instrument Panel" design in `docs/DESIGN_IDEAS.md` §6:
-- a near-black surface with hairline cards and corner ticks;
-- cyan for interaction and amber for PLE/reference values;
-- local Inter and JetBrains Mono fonts with tabular numerals;
-- token strings in mono, with `·` for a space and `⏎` for a newline.
+The shell uses the "Specimen Ledger" identity: the PLE table presented as a naturalist's catalogue of token specimens.
+- **Ledger** (light, default): archival paper `#f2ebdd` with a printed graph-paper grid and vignette, ink `#1c1a16`,
+  vermilion `#d9381e` for actions/selection/PLE and verdigris `#1f5c57` as the secondary accent. Cards are paper index
+  cards with a catalogue number ("No. 03 · Token"), hairline ink rules and double rules under titles.
+- **Darkroom** (dark): charcoal `#15130f` with film grain, paper text `#e9e1cf`, safelight red `#ff5a36` and brass `#c9a227`.
+- Fonts (local, SIL OFL): **Newsreader** (display, headings, italic KPI numerals), **Atkinson Hyperlegible** (UI text),
+  **Martian Mono** (tokens, ids, axis labels, tables).
+- Colour maps: Ledger uses a paper → verdigris → ink ramp for magnitudes and verdigris ↔ paper ↔ vermilion for signed
+  values; Darkroom uses viridis and brass ↔ charcoal ↔ safelight.
+- Layer colours L0–L5 (botanical-plate pigments, Okabe–Ito-derived, colour-blind-aware): gamboge, cerulean, viridian,
+  ochre, prussian blue, madder rose (`--l0`…`--l5` in `style.css`; deeper pigments in Ledger, brighter in Darkroom).
+- One staggered page-load sequence (masthead rule draws in, title and KPIs rise, cards follow ~60 ms apart); tab switches
+  use a short ink-wipe. All motion is disabled under `prefers-reduced-motion`.
+- The 3D map is always a dark "lightbox" plate, captioned "Plate I".
+- Token strings are in mono, with `·` for a space and `⏎` for a newline.
 
 It uses no CDNs at runtime.
 
-* **Themes:** dark is the default. Switch to light with the sun/moon button, `T` or the palette. The choice is stored in `localStorage` (`ple.theme`).
+* **Themes:** Ledger (light) is the default. Switch to Darkroom with the sun/moon button, `T` or the palette. The choice is stored in `localStorage` (`ple.theme`).
 * **Hash routes** (back/forward work):
   - `#token/<query>` (e.g. `#token/%20dog` or `#token/%23262`);
   - `#map`, `#analyze`, `#stats`, `#compare`, `#about`;

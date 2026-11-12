@@ -1,11 +1,11 @@
 // Minimal canvas charts for the PLE Explorer (no external dependencies).
 
 const DPR = window.devicePixelRatio || 1;
-const FONT = '11px "Segoe UI", system-ui, sans-serif';
+const FONT = '10px "Martian Mono", Consolas, monospace';
 // Colours come from the shell's CSS custom properties and are re-read on every draw, so a theme switch
 // (which re-renders the active tab) picks up the light/dark values.
 const cv = (name, fallback) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
-let AXIS = '#8a93a8', GRID = '#232a3b', TEXT = '#e6e9f2', REF = '#f5a524', REF2 = '#a78bfa', MARK = '#22d3ee';
+let AXIS = '#5a5244', GRID = '#c9c0ae', TEXT = '#1c1a16', REF = '#c4311a', REF2 = '#1f5c57', MARK = '#d9381e';
 function refreshColors() {
   AXIS = cv('--text-muted', AXIS); GRID = cv('--hairline', GRID); TEXT = cv('--text', TEXT);
   REF = cv('--ple', REF); REF2 = cv('--gate', REF2); MARK = cv('--accent', MARK);
@@ -41,7 +41,7 @@ export function vis(piece) {
 
 // ---- colour scales -------------------------------------------------------
 const VIRIDIS = [[68, 1, 84], [59, 82, 139], [33, 145, 140], [94, 201, 98], [253, 231, 37]];
-const DIVERGING = [[59, 130, 246], [40, 44, 56], [239, 68, 68]];
+const DIVERGING = [[31, 92, 87], [236, 228, 210], [196, 49, 26]];
 function rgbOf(c, fb) {
   const m = /^#([0-9a-f]{6})$/i.exec(c || '');
   return m ? [0, 2, 4].map(i => parseInt(m[1].slice(i, i + 2), 16)) : fb;
@@ -53,11 +53,19 @@ function interp(stops, t) {
   const a = stops[i], b = stops[i + 1];
   return `rgb(${a.map((v, k) => Math.round(v + (b[k] - v) * f)).join(',')})`;
 }
-export const seq = t => interp(VIRIDIS, t);
-/** t in [-1, 1]: blue (negative) → dark → red (positive). */
+/** Sequential magnitudes: the theme's --seq-0..4 ramp (Ledger: paper → verdigris → ink), else viridis (Darkroom). */
+export const seq = t => {
+  const s = [0, 1, 2, 3, 4].map(i => rgbOf(cv(`--seq-${i}`), null));
+  return interp(s.every(Boolean) ? s : VIRIDIS, t);
+};
+/** t in [-1, 1]: --neg → --zero → --pos (Ledger: verdigris ↔ paper ↔ vermilion; Darkroom: brass ↔ charcoal ↔ safelight). */
 export const div = t => interp([rgbOf(cv('--neg'), DIVERGING[0]), rgbOf(cv('--zero'), DIVERGING[1]), rgbOf(cv('--pos'), DIVERGING[2])], (t + 1) / 2);
 
 // ---- helpers -------------------------------------------------------------
+function lum(rgb) {
+  const m = /(\d+),\s*(\d+),\s*(\d+)/.exec(rgb || '');
+  return m ? (0.2126 * m[1] + 0.7152 * m[2] + 0.0722 * m[3]) / 255 : 0;
+}
 function makeCanvas(container, height) {
   refreshColors();
   container.innerHTML = '';
@@ -190,7 +198,7 @@ export function heatmap(container, matrix, opts = {}) {
       ctx.fillStyle = color(v);
       ctx.fillRect(left + c * cw, top + r * ch, Math.ceil(cw), Math.ceil(ch));
       if (opts.showValues && cw > 30) {
-        ctx.fillStyle = Math.abs((v - vmin) / (vmax - vmin)) > 0.6 && !opts.diverging ? '#111' : TEXT;
+        ctx.fillStyle = lum(color(v)) > 0.4 ? '#1c1a16' : '#f7f1e3';
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillText(v.toFixed(2), left + (c + 0.5) * cw, top + (r + 0.5) * ch);
       }

@@ -4,16 +4,16 @@ import d3 from '../vendor/d3/d3.js';
 
 export { d3 };
 
-// ---- theme (reads the "Instrument Panel" CSS custom properties, docs/DESIGN_IDEAS.md §6) -----------
+// ---- theme (reads the "Specimen Ledger" CSS custom properties in style.css) --------------------------
 const FALLBACK = {
-  '--bg': '#0a0d14', '--bg-grid': '#111624', '--surface': '#10141e', '--surface-2': '#161b28', '--surface-3': '#1d2333',
-  '--hairline': '#232a3b', '--hairline-strong': '#2f3850',
-  '--text': '#e6e9f2', '--text-muted': '#8a93a8', '--text-faint': '#5b6478',
-  '--accent': '#22d3ee', '--accent-dim': '#0e7490', '--ple': '#f5a524', '--gate': '#a78bfa', '--ctx': '#4fc3f7',
-  '--pos': '#f97316', '--neg': '#3b82f6', '--zero': '#2a2f3d', '--ok': '#34d399', '--warn': '#fbbf24', '--err': '#fb7185',
-  '--l0': '#f5a524', '--l1': '#4fc3f7', '--l2': '#2dd4a7', '--l3': '#f472b6', '--l4': '#a78bfa', '--l5': '#e8e36b',
-  '--font-ui': '"Inter Variable","Inter","Segoe UI",system-ui,sans-serif',
-  '--font-mono': '"JetBrains Mono Variable","JetBrains Mono","Cascadia Mono",Consolas,monospace',
+  '--bg': '#f2ebdd', '--bg-grid': '#e2d9c6', '--surface': '#fbf7ee', '--surface-2': '#efe7d6', '--surface-3': '#fffdf7',
+  '--hairline': '#c9c0ae', '--hairline-strong': '#8f8776',
+  '--text': '#1c1a16', '--text-muted': '#5a5244', '--text-faint': '#6c6455',
+  '--accent': '#d9381e', '--accent-dim': '#9dbab3', '--ple': '#c4311a', '--gate': '#1f5c57', '--ctx': '#3d5a80',
+  '--pos': '#c4311a', '--neg': '#1f5c57', '--zero': '#ece4d2', '--ok': '#2d6a3e', '--warn': '#9a6a00', '--err': '#b52d16',
+  '--l0': '#a35100', '--l1': '#276d9c', '--l2': '#00785a', '--l3': '#766a0a', '--l4': '#22477f', '--l5': '#a8457a',
+  '--font-ui': '"Atkinson Hyperlegible","Segoe UI",sans-serif',
+  '--font-mono': '"Martian Mono","Cascadia Mono",Consolas,monospace',
 };
 
 export function cssVar(name, fallback = FALLBACK[name]) {
@@ -38,9 +38,19 @@ export function theme() {
 export const layerColor = (th, l) => th.layers[((l % th.layers.length) + th.layers.length) % th.layers.length];
 
 // ---- colour maps -------------------------------------------------------------------------------------
-/** Viridis for magnitudes, t in [0,1]; starts at 0.18 so low values stay visible on a near-black bg. */
-export const viridis = t => d3.interpolateViridis(0.18 + 0.82 * clamp01(t));
-/** Blue (neg) ↔ surface-neutral ↔ orange (pos); returns f(t) with t in [-1, 1]. */
+/** Magnitude ramp, t in [0,1]. Ledger: the --seq-0..4 ink-on-paper ramp (paper → verdigris → ink).
+ *  Darkroom (no --seq-* stops): viridis, starting at 0.18 so low values stay visible on charcoal. */
+let seqKey = null, seqFn = null;
+export const viridis = t => {
+  const key = document.documentElement.dataset.theme || 'light';
+  if (key !== seqKey) {
+    seqKey = key;
+    const stops = [0, 1, 2, 3, 4].map(i => cssVar(`--seq-${i}`, ''));
+    seqFn = stops.every(s => s && s !== 'initial') ? d3.interpolateRgbBasis(stops) : (u => d3.interpolateViridis(0.18 + 0.82 * u));
+  }
+  return seqFn(clamp01(t));
+};
+/** --neg ↔ --zero ↔ --pos (Ledger: verdigris ↔ paper ↔ vermilion; Darkroom: brass ↔ charcoal ↔ safelight); f(t), t in [-1, 1]. */
 export function diverging(th = theme()) {
   const lo = d3.interpolateRgb(th.zero, th.neg), hi = d3.interpolateRgb(th.zero, th.pos);
   return t => {
@@ -48,6 +58,13 @@ export function diverging(th = theme()) {
     const k = Math.pow(Math.abs(t), 0.75);  // lift small values a little
     return t < 0 ? lo(k) : hi(k);
   };
+}
+/** Readable ink for text on a given background colour (dark ink on light fills, paper on dark fills). */
+export function inkOn(bg) {
+  const c = d3.color(bg);
+  if (!c) return null;
+  const { r, g, b } = c.rgb(), lin = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b) > 0.22 ? '#1c1a16' : '#f7f1e3';
 }
 export const clamp01 = t => Math.max(0, Math.min(1, Number.isFinite(t) ? t : 0));
 /** colour with alpha (any CSS colour d3 understands). */
