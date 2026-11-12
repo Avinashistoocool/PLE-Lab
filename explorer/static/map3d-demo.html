@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="data:,">
+<title>PLE Explorer · 3D map demo</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #05060a; }
+  #map { position: fixed; inset: 0; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<script type="module">
+  // Stand-alone demo: /static/map3d-demo.html?run=ple-small
+  import { mountMap3D } from './map3d.js';
+  const run = new URLSearchParams(location.search).get('run') || 'ple-small';
+  const el = document.getElementById('map');
+  const ctx = { run, onTokenClick: id => { window.lastTokenClick = id; console.log('onTokenClick', id); } };
+  window.mountMap3D = mountMap3D;
+  window.mapCtx = ctx;
+  window.map3d = await mountMap3D(el, ctx);
+  window.map3dReady = true;
+</script>
+</body>
+</html>

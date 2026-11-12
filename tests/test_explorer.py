@@ -290,3 +290,134 @@ def test_findings_helpers(client, tmp_path):
 
 
 A_TOKENS = [464, 3290, 4966, 1363, 13, 262, 3797, 373, 3772, 13]
+
+
+# ---------------------------------------------------------------- 3-D map
+
+def test_projection3d_shapes_and_normalization(client):
+    r = client.get("/api/projection3d", params={"run": "ple-small", "n": 60}).json()
+    assert r["n"] == 60 and len(r["points"]) == 60 and r["space"] == "shared" and r["n_layer"] == L
+    p0 = r["points"][0]
+    assert p0["id"] == 262 and p0["rank"] == 0 and p0["freq"] == 3 and p0["log_freq"] > 0
+    c = np.array([p["coords"] for p in r["points"]])
+    f = np.array([p["full"] for p in r["points"]])
+    assert c.shape == (60, L, 3) and f.shape == (60, 3)
+    assert np.abs(c).max() <= 1.0 + 1e-6 and np.abs(c).max() > 0.99  # one shared scale
+    assert np.abs(f).max() <= 1.0 + 1e-6
+    assert all(len(p["norms"]) == L and 0 <= p["max_layer"] < L for p in r["points"])
+    assert {p["cluster"] for p in r["points"]} <= set(range(r["k"])) and r["k"] == 12
+    assert sum(cl["size"] for cl in r["clusters"]) == 60
+    assert len(r["explained_variance"]) == L and len(r["explained_variance"][0]) == 3
+    assert all(len(str(x).split(".")[-1]) <= 4 for x in c.ravel()[:50].tolist())  # rounded
+
+
+def test_projection3d_shared_space_matches_pca_of_stacked_slices(client):
+    from sklearn.decomposition import PCA
+    from explorer import analysis as A
+    run = client.app.state.manager.get("ple-small")
+    r = client.get("/api/projection3d", params={"run": "ple-small", "n": 40}).json()
+    ids = [p["id"] for p in r["points"]]
+    x = run.token_rows()[ids]  # [n, L, p]
+    y = PCA(n_components=3, random_state=0).fit_transform(x.reshape(-1, P)).reshape(40, L, 3)
+    got = np.array([p["coords"] for p in r["points"]])
+    y = y / np.abs(y).max()
+    for k in range(3):  # PCA axes are defined up to sign
+        s = np.sign((got[..., k] * y[..., k]).sum())
+        assert np.allclose(got[..., k], s * y[..., k], atol=2e-3)
+    pl = client.get("/api/projection3d", params={"run": "ple-small", "n": 40, "space": "per_layer"}).json()
+    cpl = np.array([p["coords"] for p in pl["points"]])
+    assert all(np.abs(cpl[:, l]).max() > 0.99 for l in range(L))  # each layer scaled separately
+
+
+def test_projection3d_cap_cache_and_errors(client):
+    from explorer import analysis as A
+    run = client.app.state.manager.get("ple-small")
+    r = client.get("/api/projection3d", params={"run": "ple-small", "n": 999999})
+    assert r.status_code == 200 and r.json()["n"] == A.PROJ3D_MAX_N == 5000
+    a = A.projection3d(run, 30, "shared", client.app.state.freq)
+    assert A.projection3d(run, 30, "shared", client.app.state.freq) is a  # cached object
+    for params in ({"run": "baseline-small"}, {"run": "ple-small", "space": "bogus"}, {"run": "nope"}):
+        e = client.get("/api/projection3d", params=params)
+        assert e.status_code == 400 and e.json()["detail"]
+    assert "baseline" in client.get("/api/projection3d", params={"run": "baseline-small"}).json()["detail"]
+
+
+def test_trajectory(client):
+    t = client.get("/api/trajectory", params={"run": "ple-small", "id": 262, "n": 50}).json()
+    p = client.get("/api/projection3d", params={"run": "ple-small", "n": 50}).json()
+    assert t["id"] == 262 and t["index"] == 0 and len(t["layers"]) == L
+    for l, lay in enumerate(t["layers"]):
+        assert np.allclose(lay["coords"], p["points"][0]["coords"][l], atol=2e-4)
+        sims = [n["sim"] for n in lay["neighbors"]]
+        assert len(sims) == 8 and sims == sorted(sims, reverse=True)
+        assert 262 not in [n["id"] for n in lay["neighbors"]]
+        assert all(p["points"][n["index"]]["id"] == n["id"] for n in lay["neighbors"])
+    assert np.allclose(t["full"]["coords"], p["points"][0]["full"], atol=2e-4)
+    assert len(t["neighbor_overlap"]) == L - 1
+    far = client.get("/api/trajectory", params={"run": "ple-small", "id": 40000, "n": 50}).json()
+    assert far["index"] is None and len(far["layers"][0]["neighbors"]) == 8  # token outside the map
+    for params in ({"run": "baseline-small", "id": 1}, {"run": "ple-small", "id": 999999}):
+        assert client.get("/api/trajectory", params=params).status_code == 400
+
+
+# ---------------------------------------------------------------- chart data (static/viz)
+
+def test_norm_dist_ridgeline_and_hexbin(client):
+    r = client.get("/api/norm_dist", params={"run": "ple-small", "bins": 20, "gx": 10}).json()
+    assert r["n_layer"] == L and len(r["layers"]) == L and len(r["edges"]) == 21
+    assert r["has_freq"] and r["n_seen"] == 6 and r["n_seen"] + r["n_unseen"] == 50257  # ids 0,1,5,11,13,262
+    for lay in r["layers"]:
+        assert len(lay["seen"]) == len(lay["unseen"]) == 20
+        assert sum(lay["seen"]) == 6 and sum(lay["unseen"]) == 50257 - 6
+        assert 0 <= lay["frac_gt_2x_init"] <= 1
+    hb = r["hexbin"]
+    assert sum(b["n"] for b in hb["bins"]) == 50257 and hb["gx"] == 10
+    assert all(0 < len(b["examples"]) <= 3 for b in hb["bins"])
+    assert all(-hb["radius"] * 2 <= b["x"] <= 1 + hb["radius"] * 2 for b in hb["bins"])
+    top = max(hb["bins"], key=lambda b: b["x"])  # most frequent token lands in the right-most hex
+    assert top["examples"][0]["id"] == 262
+    # every token is assigned to its nearest hex centre (d3-hexbin semantics)
+    from explorer import analysis as A
+    run = client.app.state.manager.get("ple-small")
+    full = np.linalg.norm(run.token_rows()[:50257].reshape(50257, -1), axis=-1)
+    centres = np.array([[b["x"], b["y"]] for b in hb["bins"]])
+    y = full[262] / hb["y_domain"][1] * hb["aspect"]
+    d = ((centres - [1.0, y]) ** 2).sum(1)
+    assert hb["bins"][int(d.argmin())]["examples"][0]["id"] == 262
+    assert client.get("/api/norm_dist", params={"run": "baseline-small"}).status_code == 400
+    assert A.norm_dist(run, client.app.state.freq, 20, 10) is A.norm_dist(run, client.app.state.freq, 20, 10)
+
+
+def test_neighbor_graph(client):
+    g = client.get("/api/neighbor_graph", params={"run": "ple-small", "id": 262, "layer": 1, "k": 5, "k2": 2}).json()
+    root = [n for n in g["nodes"] if n["root"]]
+    assert len(root) == 1 and root[0]["id"] == 262 and len(g["nodes"]) == 6
+    nb = client.get("/api/neighbors", params={"run": "ple-small", "id": 262, "layer": 1, "k": 5}).json()
+    assert [l["target"] for l in g["links"] if l["kind"] == "root"] == [n["id"] for n in nb["neighbors"]]
+    ids = {n["id"] for n in g["nodes"]}
+    assert all(l["source"] in ids and l["target"] in ids for l in g["links"])
+    assert any(l["kind"] == "peer" for l in g["links"])
+    a = client.get("/api/neighbor_graph", params={"run": "ple-small", "id": 262, "layer": "all", "k": 4, "k2": 0}).json()
+    assert a["layers"] == list(range(L)) and sum(l["kind"] == "root" for l in a["links"]) == 4 * L
+    assert all(n["shared"] == len(n["layers"]) >= 1 for n in a["nodes"] if not n["root"])
+    for params in ({"layer": "bogus"}, {"layer": 99}, {"id": 999999}):
+        q = {"run": "ple-small", "id": 262, **params}
+        assert client.get("/api/neighbor_graph", params=q).status_code == 400
+
+
+def test_map3d_static_assets(client):
+    """The 3D map module, its demo page and the vendored three.js addons are served, and every import in
+    them is a relative path (no bare 'three' specifier, which would need an import map)."""
+    import re
+    from pathlib import Path
+    static = Path(__file__).resolve().parents[1] / "explorer" / "static"
+    files = [static / "map3d.js", *sorted((static / "vendor" / "three" / "addons").rglob("*.js"))]
+    for f in files:
+        rel = f.relative_to(static).as_posix()
+        assert client.get(f"/static/{rel}").status_code == 200, rel
+        for spec in re.findall(r"""^(?:import|export)\b[^'";]*?\bfrom\s*['"]([^'"]+)['"]""",
+                               f.read_text(encoding="utf-8"), re.M):
+            assert spec.startswith("."), (rel, spec)
+            assert (f.parent / spec).resolve().is_file(), (rel, spec)
+    assert client.get("/static/map3d-demo.html").status_code == 200
+    assert "export async function mountMap3D" in (static / "map3d.js").read_text(encoding="utf-8")

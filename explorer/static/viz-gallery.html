@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PLE Explorer · viz gallery</title>
+<style>
+  @font-face { font-family: "Inter Variable"; src: url("vendor/fonts/Inter-var-latin.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+  @font-face { font-family: "JetBrains Mono Variable"; src: url("vendor/fonts/JetBrainsMono-var-latin.woff2") format("woff2"); font-weight: 100 800; font-display: swap; }
+  /* Instrument Panel tokens (docs/DESIGN_IDEAS.md §6); the real app gets these from style.css. */
+  :root {
+    --bg:#0a0d14; --bg-grid:#111624; --surface:#10141e; --surface-2:#161b28; --surface-3:#1d2333;
+    --hairline:#232a3b; --hairline-strong:#2f3850; --text:#e6e9f2; --text-muted:#8a93a8; --text-faint:#5b6478;
+    --accent:#22d3ee; --accent-dim:#0e7490; --ple:#f5a524; --gate:#a78bfa; --ctx:#4fc3f7;
+    --pos:#f97316; --neg:#3b82f6; --zero:#2a2f3d; --ok:#34d399; --warn:#fbbf24; --err:#fb7185;
+    --focus:0 0 0 2px var(--bg),0 0 0 4px var(--accent);
+    --l0:#f5a524; --l1:#4fc3f7; --l2:#2dd4a7; --l3:#f472b6; --l4:#a78bfa; --l5:#e8e36b;
+    --r-xs:3px; --r-sm:6px; --r-md:10px; --r-pill:999px;
+    --sh-2:0 1px 0 rgba(255,255,255,.04) inset, 0 8px 24px rgba(0,0,0,.45);
+    --glow-accent:0 0 0 1px rgba(34,211,238,.35), 0 0 18px rgba(34,211,238,.25);
+    --font-ui:"Inter Variable","Inter","Segoe UI",system-ui,sans-serif;
+    --font-mono:"JetBrains Mono Variable","JetBrains Mono","Cascadia Mono",Consolas,monospace;
+    --tracking-caps:.08em;
+    --ease-out:cubic-bezier(.16,1,.3,1); --ease-spring:cubic-bezier(.34,1.56,.64,1);
+    --d-fast:150ms; --d-base:250ms;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 var(--font-ui);
+    background-image: radial-gradient(circle, var(--bg-grid) 1px, transparent 1px); background-size: 24px 24px;
+  }
+  header { padding: 18px 28px 6px; display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; }
+  header h1 { margin: 0; font: 600 20px var(--font-mono); letter-spacing: .02em; }
+  header h1 span { color: var(--accent); }
+  .muted { color: var(--text-muted); }
+  main { padding: 8px 28px 40px; display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; }
+  section.tab { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; }
+  section.tab > h2 { grid-column: 1 / -1; margin: 18px 0 0; font: 500 12px/1 var(--font-mono); text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--accent); }
+  .card {
+    position: relative; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--r-md);
+    padding: 12px 14px 14px; box-shadow: var(--sh-2); min-width: 0;
+    background-image: linear-gradient(var(--hairline-strong), var(--hairline-strong)), linear-gradient(var(--hairline-strong), var(--hairline-strong)),
+      linear-gradient(var(--hairline-strong), var(--hairline-strong)), linear-gradient(var(--hairline-strong), var(--hairline-strong));
+    background-repeat: no-repeat; background-size: 8px 1px, 1px 8px, 8px 1px, 1px 8px;
+    background-position: -1px -1px, -1px -1px, calc(100% + 1px) calc(100% + 1px), calc(100% + 1px) calc(100% + 1px);
+  }
+  .card h3 { margin: 0 0 8px; display: flex; justify-content: space-between; gap: 10px; font: 500 11px/1.3 var(--font-mono); text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--text-muted); }
+  .card h3 small { text-transform: none; letter-spacing: 0; color: var(--text-faint); font-weight: 400; }
+  .s4 { grid-column: span 4; } .s5 { grid-column: span 5; } .s6 { grid-column: span 6; } .s7 { grid-column: span 7; } .s8 { grid-column: span 8; } .s12 { grid-column: span 12; }
+  @media (max-width: 1100px) { .s4, .s5, .s6, .s7, .s8 { grid-column: span 12; } }
+  .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  input, select, button.b {
+    background: var(--surface-2); color: var(--text); border: 1px solid var(--hairline-strong); border-radius: var(--r-sm);
+    padding: 5px 9px; font: 13px var(--font-mono);
+  }
+  button.b { cursor: pointer; } button.b:hover { border-color: var(--accent); }
+  .tokbtn { padding: 2px 8px !important; font-size: 12px !important; }
+  #status { font: 12px var(--font-mono); color: var(--text-muted); }
+  #status.err { color: var(--err); }
+  .err-box { color: var(--err); font: 12px var(--font-mono); }
+</style>
+</head>
+<body>
+<header>
+  <h1>PLE<span>·</span>viz gallery</h1>
+  <span class="muted">standalone harness for <code>static/viz/*</code> with live API data</span>
+  <span class="controls">run <select id="run"></select></span>
+  <span id="status">loading…</span>
+</header>
+<main>
+  <section class="tab" id="tab-token">
+    <h2>Token</h2>
+    <div class="card s12">
+      <div class="controls">
+        <form id="tokform" class="controls"><input id="tok" value=" dog" size="12" aria-label="token"><button class="b">open</button></form>
+        <span class="muted">quick:</span>
+        <span id="quick" class="controls"></span>
+      </div>
+    </div>
+    <div class="card s5"><h3>Layer fingerprint <small>6 petals × 64 spokes · ring = slice RMS · dashed = init</small></h3><div id="glyph"></div></div>
+    <div class="card s7">
+      <h3>Per-layer vector <small>blue − · orange + · cross-fades on token change</small></h3><div id="heat"></div>
+      <h3 style="margin-top:14px">Layer similarity <small>cos between slices</small></h3><div id="sim"></div>
+    </div>
+    <div class="card s12">
+      <h3>Neighbour constellation <small>drag nodes · click to open</small></h3>
+      <div class="controls" style="margin-bottom:6px">layer
+        <select id="fg-layer"><option value="-1">full row</option><option value="all" selected>all layers</option></select>
+        k <input id="fg-k" type="number" value="8" min="3" max="30" style="width:60px">
+      </div>
+      <div id="force"></div>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-analyze">
+    <h2>Analyze</h2>
+    <div class="card s12">
+      <div class="controls"><input id="antext" style="flex:1;min-width:300px" value="Once upon a time, a happy dog ran to the park."><button class="b" id="anrun">analyze + ablate all</button></div>
+    </div>
+    <div class="card s12"><h3>Token chips <small>sparkline = gate per layer · colour = Δloss when ablated</small></h3><div id="chips"></div></div>
+    <div class="card s12"><h3>Gate river <small>linked to the chips · click legend to solo a layer</small></h3><div id="river"></div></div>
+    <div class="card s12"><h3>Ablation morph <small>bars: loss → ablated loss · ghost tick = normal · hold Space for before</small></h3><div id="abl"></div></div>
+  </section>
+
+  <section class="tab" id="tab-stats">
+    <h2>Stats</h2>
+    <div class="card s6"><h3>Slice norms per layer <small>seen vs never-seen tokens</small></h3><div id="ridge"></div></div>
+    <div class="card s6"><h3>Norm vs training frequency <small>all tokens, hexbin</small></h3><div id="hex"></div></div>
+  </section>
+
+  <section class="tab" id="tab-compare">
+    <h2>Compare</h2>
+    <div class="card s12"><h3>Baseline → PLE loss <small>slope chart + diverging Δ, linked</small></h3><div id="slope"></div></div>
+  </section>
+</main>
+
+<script type="module">
+import * as viz from './viz/index.js';
+
+const $ = id => document.getElementById(id);
+const status = (m, err) => { $('status').textContent = m; $('status').className = err ? 'err' : ''; };
+async function api(path, body) {
+  const r = await fetch(path, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {});
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.detail || r.statusText);
+  return j;
+}
+const charts = {};
+window.__viz = charts;  // for the playwright harness
+let run = 'ple-small', tokenId = null;
+const q = o => new URLSearchParams({ run, ...o }).toString();
+const fail = (el, e) => { $(el).innerHTML = `<div class="err-box">${viz.esc(e.message)}</div>`; console.warn(e); };
+
+async function loadRuns() {
+  const r = await api('/api/runs');
+  const ple = r.runs.filter(x => x.has_ple);
+  $('run').innerHTML = ple.map(x => `<option${x.name === run ? ' selected' : ''}>${x.name}</option>`).join('');
+  if (!ple.some(x => x.name === run) && ple.length) run = ple[0].name;
+}
+
+async function openToken(query) {
+  const t = await api(`/api/token?${q(query.startsWith('#') ? { id: query.slice(1) } : { q: query })}`);
+  tokenId = t.id; $('tok').value = query.startsWith('#') ? viz.vis(t.piece).replace(/␣/g, ' ') : query;
+  const sim = await api(`/api/layer_similarity?${q({ id: t.id })}`);
+  if (charts.glyph) charts.glyph.update(t);
+  else charts.glyph = viz.glyph($('glyph'), t, { onHover: h => charts.heat?.highlight(h?.layer ?? null, h?.dim ?? null) });
+  if (charts.heat) charts.heat.update(t);
+  else charts.heat = viz.heatmap2($('heat'), t, { onHover: h => charts.glyph?.highlight(h?.layer ?? null, h?.dim ?? null) });
+  if (charts.sim) charts.sim.update(sim); else charts.sim = viz.simMatrix($('sim'), sim, { size: 300 });
+  await loadGraph();
+}
+
+async function loadGraph() {
+  const g = await api(`/api/neighbor_graph?${q({ id: tokenId, layer: $('fg-layer').value, k: $('fg-k').value, k2: 2 })}`);
+  if (charts.force) charts.force.update(g);
+  else charts.force = viz.forceGraph($('force'), g, { height: 460, onNodeClick: n => guard(() => openToken(`#${n.id}`)) });
+}
+
+async function analyze() {
+  const a = await api('/api/analyze', { run, text: $('antext').value, mask: 'all' });
+  const link = { onHover: i => { charts.chips?.highlight(i); charts.river?.highlight(i); charts.abl?.highlight(i); } };
+  for (const c of ['chips', 'river', 'abl']) charts[c]?.destroy();
+  charts.chips = viz.sparkChips($('chips'), a, { color: 'loss', onHover: link.onHover });
+  charts.river = viz.river($('river'), a, { height: 250, onHover: i => { charts.chips.highlight(i); charts.abl.highlight(i); } });
+  charts.abl = viz.ablation($('abl'), a, { height: 300, onHover: i => { charts.chips.highlight(i); charts.river.highlight(i); } });
+  // chips morph from loss colouring to Δ colouring (ablation story)
+  setTimeout(() => charts.chips.setColor('delta'), 900);
+}
+
+async function stats() {
+  const d = await api(`/api/norm_dist?${q({})}`);
+  charts.ridge?.destroy(); charts.hex?.destroy();
+  charts.ridge = viz.ridgeline($('ridge'), d, { height: 380 });
+  charts.hex = viz.hexbin($('hex'), d, { height: 380, onClick: b => guard(() => openToken(`#${b.examples[0].id}`)) });
+}
+
+async function compare() {
+  try {
+    const c = await api('/api/compare', { text: $('antext').value, baseline: 'baseline-small', ple: run });
+    charts.slope?.destroy();
+    charts.slope = viz.slope($('slope'), c, { height: 380 });
+  } catch (e) { fail('slope', e); }
+}
+
+async function guard(fn) { try { await fn(); } catch (e) { status(e.message, true); console.warn(e); } }
+
+$('tokform').addEventListener('submit', ev => { ev.preventDefault(); guard(() => openToken($('tok').value)); });
+$('fg-layer').addEventListener('change', () => guard(loadGraph));
+$('fg-k').addEventListener('change', () => guard(loadGraph));
+$('anrun').addEventListener('click', () => guard(async () => { await analyze(); await compare(); }));
+$('run').addEventListener('change', ev => { run = ev.target.value; for (const k of Object.keys(charts)) { charts[k].destroy(); delete charts[k]; } boot(); });
+
+async function boot() {
+  status('loading…');
+  try {
+    await loadRuns();
+    const L = 6;
+    $('fg-layer').innerHTML = `<option value="-1">full row</option><option value="all" selected>all layers</option>` + Array.from({ length: L }, (_, l) => `<option value="${l}">L${l}</option>`).join('');
+    $('quick').innerHTML = [' dog', ' cat', ' happy', ' the', '.', ' Lily', ' xyzzy'].map(t => `<button class="b tokbtn" data-t="${t}">${viz.esc(viz.vis(t))}</button>`).join('');
+    $('quick').querySelectorAll('button').forEach(b => b.addEventListener('click', () => guard(() => openToken(b.dataset.t))));
+    await Promise.all([openToken($('tok').value), analyze(), stats(), compare()]);
+    status(`run ${run} · all charts rendered`);
+    document.body.dataset.ready = '1';
+  } catch (e) { status(e.message, true); console.error(e); document.body.dataset.ready = 'error'; }
+}
+boot();
+</script>
+</body>
+</html>

@@ -74,9 +74,25 @@ def create_app(runs_dir: str | Path = "runs", device: str = "cpu",
     def projection(run: str, layer: int = 0, n: int = 2000) -> dict:
         return A.projection(ple_run(run), layer, n, freq)
 
+    @app.get("/api/projection3d")
+    def projection3d(run: str, n: int = 2000, space: str = "shared") -> dict:
+        return A.projection3d(ple_run(run), n, space, freq)
+
+    @app.get("/api/trajectory")
+    def trajectory(run: str, id: int, n: int = 2000, space: str = "shared", k: int = 8) -> dict:
+        return A.trajectory(ple_run(run), id, n, space, freq, k)
+
     @app.get("/api/stats")
     def stats(run: str) -> dict:
         return A.stats(ple_run(run), freq)
+
+    @app.get("/api/norm_dist")
+    def norm_dist(run: str, bins: int = 48, gx: int = 36, aspect: float = 0.5) -> dict:
+        return A.norm_dist(ple_run(run), freq, bins, gx, aspect)
+
+    @app.get("/api/neighbor_graph")
+    def neighbor_graph(run: str, id: int, layer: str = "-1", k: int = 12, k2: int = 2) -> dict:
+        return A.neighbor_graph(ple_run(run), id, layer, k, k2)
 
     @app.post("/api/analyze")
     def analyze(body: AnalyzeBody) -> dict:

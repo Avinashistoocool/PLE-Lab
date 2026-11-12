@@ -2,9 +2,14 @@
 
 const DPR = window.devicePixelRatio || 1;
 const FONT = '11px "Segoe UI", system-ui, sans-serif';
-const AXIS = '#8b93a7';
-const GRID = '#262b38';
-const TEXT = '#d7dbe6';
+// Colours come from the shell's CSS custom properties and are re-read on every draw, so a theme switch
+// (which re-renders the active tab) picks up the light/dark values.
+const cv = (name, fallback) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+let AXIS = '#8a93a8', GRID = '#232a3b', TEXT = '#e6e9f2', REF = '#f5a524', REF2 = '#a78bfa', MARK = '#22d3ee';
+function refreshColors() {
+  AXIS = cv('--text-muted', AXIS); GRID = cv('--hairline', GRID); TEXT = cv('--text', TEXT);
+  REF = cv('--ple', REF); REF2 = cv('--gate', REF2); MARK = cv('--accent', MARK);
+}
 
 export const tooltip = (() => {
   const el = document.createElement('div');
@@ -37,6 +42,10 @@ export function vis(piece) {
 // ---- colour scales -------------------------------------------------------
 const VIRIDIS = [[68, 1, 84], [59, 82, 139], [33, 145, 140], [94, 201, 98], [253, 231, 37]];
 const DIVERGING = [[59, 130, 246], [40, 44, 56], [239, 68, 68]];
+function rgbOf(c, fb) {
+  const m = /^#([0-9a-f]{6})$/i.exec(c || '');
+  return m ? [0, 2, 4].map(i => parseInt(m[1].slice(i, i + 2), 16)) : fb;
+}
 
 function interp(stops, t) {
   t = Math.min(1, Math.max(0, Number.isFinite(t) ? t : 0));
@@ -46,10 +55,11 @@ function interp(stops, t) {
 }
 export const seq = t => interp(VIRIDIS, t);
 /** t in [-1, 1]: blue (negative) → dark → red (positive). */
-export const div = t => interp(DIVERGING, (t + 1) / 2);
+export const div = t => interp([rgbOf(cv('--neg'), DIVERGING[0]), rgbOf(cv('--zero'), DIVERGING[1]), rgbOf(cv('--pos'), DIVERGING[2])], (t + 1) / 2);
 
 // ---- helpers -------------------------------------------------------------
 function makeCanvas(container, height) {
+  refreshColors();
   container.innerHTML = '';
   const canvas = document.createElement('canvas');
   const w = Math.max(160, container.clientWidth || 400);
@@ -133,7 +143,7 @@ export function barChart(container, values, opts = {}) {
   axes(ctx, box, null, niceTicks(vmin, vmax, 4), null, sy);
   const n = values.length, bw = (box.r - box.l) / n;
   values.forEach((v, i) => {
-    ctx.fillStyle = opts.color ? opts.color(v, i) : '#60a5fa';
+    ctx.fillStyle = opts.color ? opts.color(v, i) : MARK;
     const y0 = sy(Math.max(0, vmin)), y1 = sy(v);
     ctx.fillRect(box.l + i * bw + bw * 0.12, Math.min(y0, y1), Math.max(1, bw * 0.76), Math.abs(y1 - y0));
   });
@@ -143,9 +153,9 @@ export function barChart(container, values, opts = {}) {
   labels.forEach((lab, i) => { if (i % every === 0) ctx.fillText(lab, box.l + (i + 0.5) * bw, box.b + 4); });
   if (opts.refLine) {
     const y = sy(opts.refLine.value);
-    ctx.strokeStyle = '#f59e0b'; ctx.setLineDash([4, 4]);
+    ctx.strokeStyle = REF; ctx.setLineDash([4, 4]);
     ctx.beginPath(); ctx.moveTo(box.l, y); ctx.lineTo(box.r, y); ctx.stroke(); ctx.setLineDash([]);
-    ctx.fillStyle = '#f59e0b'; ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+    ctx.fillStyle = REF; ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
     ctx.fillText(opts.refLine.label, box.r, y - 2);
   }
   axisLabels(ctx, box, w, h, opts.xLabel, opts.yLabel);
@@ -232,20 +242,20 @@ export function scatter(container, points, opts = {}) {
   const sxp = points.map(p => sx(tx(p.x))), syp = points.map(p => sy(p.y));
   ctx.globalAlpha = opts.alpha ?? 0.75;
   points.forEach((p, i) => {
-    ctx.fillStyle = p.color || '#60a5fa';
+    ctx.fillStyle = p.color || MARK;
     ctx.beginPath(); ctx.arc(sxp[i], syp[i], p.r || 2.5, 0, Math.PI * 2); ctx.fill();
   });
   ctx.globalAlpha = 1;
   if (opts.line) {
-    ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 2; ctx.beginPath();
+    ctx.strokeStyle = REF; ctx.lineWidth = 2; ctx.beginPath();
     opts.line.x.forEach((x, i) => (i ? ctx.lineTo : ctx.moveTo).call(ctx, sx(tx(x)), sy(opts.line.y[i])));
     ctx.stroke(); ctx.lineWidth = 1;
   }
   if (opts.refY) {
     const y = sy(opts.refY.value);
-    ctx.strokeStyle = '#a78bfa'; ctx.setLineDash([4, 4]);
+    ctx.strokeStyle = REF2; ctx.setLineDash([4, 4]);
     ctx.beginPath(); ctx.moveTo(box.l, y); ctx.lineTo(box.r, y); ctx.stroke(); ctx.setLineDash([]);
-    ctx.fillStyle = '#a78bfa'; ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+    ctx.fillStyle = REF2; ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
     ctx.fillText(opts.refY.label, box.r, y - 2);
   }
   if (opts.labelTop) {
@@ -254,9 +264,9 @@ export function scatter(container, points, opts = {}) {
   }
   if (opts.highlight != null && points[opts.highlight]) {
     const i = opts.highlight;
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+    ctx.strokeStyle = TEXT; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(sxp[i], syp[i], 7, 0, Math.PI * 2); ctx.stroke(); ctx.lineWidth = 1;
-    ctx.fillStyle = '#fff'; ctx.textAlign = 'left'; ctx.fillText(points[i].label || '', sxp[i] + 9, syp[i]);
+    ctx.fillStyle = TEXT; ctx.textAlign = 'left'; ctx.fillText(points[i].label || '', sxp[i] + 9, syp[i]);
   }
   axisLabels(ctx, box, w, h, opts.xLabel, opts.yLabel);
   hover(canvas, (x, y) => {

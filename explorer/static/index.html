@@ -1,108 +1,212 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
   <title>PLE Explorer</title>
-  <link rel="icon" href="data:,">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23070a12'/%3E%3Cg fill='none' stroke-width='2.2' stroke-linecap='round'%3E%3Cpath d='M8 10h16' stroke='%234de1ff'/%3E%3Cpath d='M8 16h16' stroke='%237fb0ff'/%3E%3Cpath d='M8 22h16' stroke='%23a67cff'/%3E%3C/g%3E%3Cpath d='M16 4v24' stroke='%23fff' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="preload" href="/static/vendor/fonts/Inter-var-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/static/vendor/fonts/JetBrainsMono-var-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <script>
+    // Apply the saved theme before first paint (no flash).
+    try { const t = localStorage.getItem('ple.theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
   <link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/viz/viz.css" id="viz-css">
 </head>
 <body>
-<header>
-  <div class="brand">PLE <span>Explorer</span></div>
-  <nav id="tabs">
-    <button data-tab="token" class="active">Token</button>
-    <button data-tab="map">Map</button>
-    <button data-tab="analyze">Analyze</button>
-    <button data-tab="stats">Stats</button>
-    <button data-tab="compare">Compare</button>
-    <button data-tab="about">About</button>
+<a class="skip" href="#main">Skip to content</a>
+<canvas id="backdrop" aria-hidden="true"></canvas>
+<div id="progress" class="progress" aria-hidden="true"><i></i></div>
+
+<header class="appbar">
+  <a class="brand" href="#about" aria-label="PLE Explorer, about">
+    <svg class="logo" viewBox="0 0 40 40" aria-hidden="true">
+      <defs>
+        <linearGradient id="lg-slab" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="var(--accent)"/><stop offset="1" stop-color="var(--gate)"/></linearGradient>
+        <linearGradient id="lg-beam" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".5" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+      </defs>
+      <g class="slabs">
+        <path d="M6 12 20 6l14 6-14 6z" fill="url(#lg-slab)" opacity=".95"/>
+        <path d="M6 19.5 20 13.5l14 6-14 6z" fill="url(#lg-slab)" opacity=".6"/>
+        <path d="M6 27 20 21l14 6-14 6z" fill="url(#lg-slab)" opacity=".35"/>
+      </g>
+      <rect class="beam" x="19" y="1" width="2" height="38" rx="1" fill="url(#lg-beam)"/>
+    </svg>
+    <span class="brand-text"><b>PLE</b> Explorer<small>per-layer embeddings · instrument</small></span>
+  </a>
+
+  <nav id="tabs" class="tabs" role="tablist" aria-label="Views">
+    <button role="tab" data-tab="token" class="active" aria-selected="true" aria-controls="tab-token" id="tabbtn-token"><span class="tab-num">1</span>Token</button>
+    <button role="tab" data-tab="map" aria-selected="false" aria-controls="tab-map" id="tabbtn-map"><span class="tab-num">2</span>Map</button>
+    <button role="tab" data-tab="analyze" aria-selected="false" aria-controls="tab-analyze" id="tabbtn-analyze"><span class="tab-num">3</span>Analyze</button>
+    <button role="tab" data-tab="stats" aria-selected="false" aria-controls="tab-stats" id="tabbtn-stats"><span class="tab-num">4</span>Stats</button>
+    <button role="tab" data-tab="compare" aria-selected="false" aria-controls="tab-compare" id="tabbtn-compare"><span class="tab-num">5</span>Compare</button>
+    <button role="tab" data-tab="about" aria-selected="false" aria-controls="tab-about" id="tabbtn-about"><span class="tab-num">6</span>About</button>
+    <span class="tab-ink" aria-hidden="true"></span>
   </nav>
-  <div class="run-picker">
-    <label for="run">run</label>
-    <select id="run"></select>
-    <span id="run-info" class="muted"></span>
+
+  <div class="actions">
+    <div class="run-pill" title="Selected run">
+      <span class="run-dot" aria-hidden="true"></span>
+      <label for="run" class="sr-only">run</label>
+      <select id="run" aria-label="Run"></select>
+      <span id="run-info" class="run-info"></span>
+    </div>
+    <button id="open-palette" class="iconbtn kbd-btn" type="button" aria-label="Open command palette (Ctrl+K)" title="Command palette">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4"/></svg><kbd>Ctrl K</kbd>
+    </button>
+    <button id="theme-toggle" class="iconbtn" type="button" aria-label="Toggle light/dark theme" title="Toggle theme">
+      <svg class="i-moon" viewBox="0 0 20 20" aria-hidden="true"><path d="M16.5 12.5A7 7 0 0 1 7.5 3.5a7 7 0 1 0 9 9z"/></svg>
+      <svg class="i-sun" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="3.6"/><path d="M10 1.8v2.2M10 16v2.2M1.8 10H4M16 10h2.2M4.2 4.2l1.6 1.6M14.2 14.2l1.6 1.6M4.2 15.8l1.6-1.6M14.2 5.8l1.6-1.6"/></svg>
+    </button>
+    <button id="open-help" class="iconbtn" type="button" aria-label="Keyboard shortcuts (?)" title="Keyboard shortcuts">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="5" width="16" height="10" rx="2"/><path d="M5 8.5h1M8 8.5h1M11 8.5h1M14 8.5h1M6 11.5h8"/></svg>
+    </button>
   </div>
 </header>
-<div id="banner" class="banner hidden"></div>
 
-<main>
+<section class="kpis" aria-label="Run at a glance">
+  <div class="kpi"><span class="kpi-label">PLE table</span><span class="kpi-val"><b id="kpi-table">–</b><i>params</i></span></div>
+  <div class="kpi"><span class="kpi-label">layers × dims</span><span class="kpi-val"><b id="kpi-L">–</b><i>×</i><b id="kpi-p">–</b></span></div>
+  <div class="kpi"><span class="kpi-label">d<sub>model</sub></span><span class="kpi-val"><b id="kpi-d">–</b></span></div>
+  <div class="kpi"><span class="kpi-label">dense</span><span class="kpi-val"><b id="kpi-dense">–</b><i>params</i></span></div>
+  <div class="kpi"><span class="kpi-label">tokens seen</span><span class="kpi-val"><b id="kpi-tokens">–</b></span></div>
+  <div class="kpi kpi-accent"><span class="kpi-label">val loss</span><span class="kpi-val"><b id="kpi-loss">–</b><i>nats</i></span></div>
+  <button class="info" data-info="kpi"></button>
+</section>
+
+
+
+<main id="main" tabindex="-1">
   <!-- TOKEN -->
-  <section id="tab-token" class="tab active">
-    <form id="token-form" class="toolbar">
-      <input id="token-q" placeholder="token text (e.g. ' cat') or #id" value=" the" autocomplete="off">
-      <button type="submit">Look up</button>
-      <span id="token-pieces" class="muted"></span>
+  <section id="tab-token" class="tab active" role="tabpanel" aria-labelledby="tabbtn-token">
+    <form id="token-form" class="searchbar" role="search">
+      <div class="search-field">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4"/></svg>
+        <label for="token-q" class="sr-only">Token text or #id</label>
+        <input id="token-q" placeholder="token text (e.g. ' cat') or #id" value=" the" autocomplete="off" spellcheck="false">
+        <kbd class="search-kbd" aria-hidden="true">/</kbd>
+      </div>
+      <button type="submit" class="btn primary">Look up</button>
+      <div class="samples" aria-label="Sample tokens">
+        <span class="samples-label">try</span>
+        <button type="button" class="sample tok" data-token=" the"> the</button>
+        <button type="button" class="sample tok" data-token=" happy"> happy</button>
+        <button type="button" class="sample tok" data-token=" dog"> dog</button>
+        <button type="button" class="sample tok" data-token=" ran"> ran</button>
+        <button type="button" class="sample tok" data-token=" Lily"> Lily</button>
+        <button type="button" class="sample tok" data-token=" said"> said</button>
+      </div>
     </form>
+    <div id="token-pieces" class="pieces"></div>
     <div id="token-head" class="token-head"></div>
     <div class="grid two">
       <div class="card">
-        <h3>Per-layer row norm <small>‖E[t]<sub>l</sub>·√p‖</small></h3>
+        <div class="card-head"><h3>Per-layer row norm <small>‖E[t]<sub>l</sub>·√p‖</small></h3><button class="info" data-info="norms"></button></div>
         <div id="token-norms" class="chart"></div>
         <p class="hint">Dashed line = expected norm at initialisation. Bars far above it were pushed by training.</p>
       </div>
       <div class="card">
-        <h3>Layer similarity <small>cos(slice<sub>i</sub>, slice<sub>j</sub>)</small></h3>
-        <div class="grid two tight">
-          <div><div class="sub">this token</div><div id="token-sim" class="chart"></div></div>
-          <div><div class="sub" id="global-sim-title">average over frequent tokens</div><div id="global-sim" class="chart"></div></div>
-        </div>
+        <div class="card-head"><h3>Layer similarity <small>cos(slice<sub>i</sub>, slice<sub>j</sub>)</small></h3><button class="info" data-info="layersim"></button></div>
+        <div id="token-sim" class="chart"></div>
+        <p class="hint" id="global-sim-title">Toggle between this token and the average over frequent tokens.</p>
+      </div>
+    </div>
+    <div class="grid two">
+      <div class="card">
+        <div class="card-head"><h3>Glyph <small>radial L × p fingerprint of the token part</small></h3><button class="info" data-info="glyph"></button></div>
+        <div id="token-glyph" class="chart"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>Neighbour graph <small>top-k by cosine in the chosen layer; click a node to open it</small></h3><button class="info" data-info="graph"></button></div>
+        <div id="token-graph" class="chart"></div>
       </div>
     </div>
     <div class="card">
-      <h3>Vectors <small>L × p heatmap of the token part (blue −, red +)</small></h3>
+      <div class="card-head"><h3>Vectors <small>L × p heatmap of the token part (blue −, orange +)</small></h3><button class="info" data-info="vectors"></button></div>
       <div id="token-heat" class="chart"></div>
     </div>
     <div class="card">
-      <h3>Nearest tokens <small>cosine similarity in one layer slice</small></h3>
+      <div class="card-head"><h3>Nearest tokens <small>cosine similarity in one layer slice</small></h3><button class="info" data-info="neighbors"></button></div>
       <div class="toolbar">
-        <label>layer <select id="nb-layer"></select></label>
-        <label>k <input id="nb-k" type="number" min="1" max="200" value="20" style="width:60px"></label>
+        <label>layer <select id="nb-layer" aria-label="Neighbour layer"></select></label>
+        <label>k <input id="nb-k" type="number" min="1" max="200" value="20" class="num-input" aria-label="Number of neighbours"></label>
       </div>
       <table id="nb-table" class="table"></table>
     </div>
   </section>
 
   <!-- MAP -->
-  <section id="tab-map" class="tab">
-    <div class="toolbar">
-      <label>layer <select id="map-layer"></select></label>
-      <label>tokens <select id="map-n"><option>500</option><option selected>2000</option><option>5000</option></select></label>
-      <label>colour <select id="map-color"><option value="rank">frequency rank</option><option value="norm">row norm</option></select></label>
-      <input id="map-find" placeholder="highlight token…" autocomplete="off">
-      <span id="map-info" class="muted"></span>
+  <section id="tab-map" class="tab" role="tabpanel" aria-labelledby="tabbtn-map">
+    <div class="card toolbar-card">
+      <div class="toolbar">
+        <select id="map-mode" aria-label="Map mode: 2D or 3D"><option value="2d">2D</option><option value="3d">3D</option></select>
+        <label>layer <select id="map-layer" aria-label="Map layer"></select></label>
+        <label>tokens <select id="map-n" aria-label="Number of tokens"><option>500</option><option selected>2000</option><option>5000</option></select></label>
+        <label>colour <select id="map-color" aria-label="Map colour"><option value="rank">frequency rank</option><option value="norm">row norm</option></select></label>
+        <div class="search-field small">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4"/></svg>
+          <input id="map-find" placeholder="highlight token…" autocomplete="off" spellcheck="false" aria-label="Highlight token">
+        </div>
+        <button class="info" data-info="map"></button>
+      </div>
+      <div id="map-info" class="muted map-info"></div>
     </div>
-    <div class="card"><div id="map-plot" class="chart"></div>
-      <p class="hint">PCA of the token-part slice for the chosen layer. Hover for the token, click to open it in the Token tab. Labels shown for the 40 most frequent tokens.</p>
+    <div id="map3d-note" class="notice hidden" role="status"></div>
+    <div class="card map-card">
+      <div id="map3d" class="map3d hidden" role="region" aria-label="3D token map"></div>
+      <div id="map-plot" class="chart"></div>
+      <p class="hint" id="map-hint">PCA of the token-part slice for the chosen layer. Hover for the token, click to open it in the Token tab. Labels shown for the 40 most frequent tokens.</p>
     </div>
   </section>
 
   <!-- ANALYZE -->
-  <section id="tab-analyze" class="tab">
+  <section id="tab-analyze" class="tab" role="tabpanel" aria-labelledby="tabbtn-analyze">
     <div class="grid analyze">
       <div>
-        <div class="card">
-          <textarea id="an-text" rows="4">Once upon a time, there was a little girl named Lily. She loved to play outside in the sunshine with her dog, Max.</textarea>
-          <div class="toolbar">
-            <button id="an-run">Analyze</button>
-            <label class="check"><input type="checkbox" id="an-ablate"> Ablate PLE</label>
-            <span id="an-layers" class="layer-boxes"></span>
-            <label class="check"><input type="checkbox" id="an-all" checked> all layers</label>
+        <div class="card composer">
+          <div class="samples" aria-label="Sample texts">
+            <span class="samples-label">samples</span>
+            <button type="button" class="sample" data-text="Once upon a time, there was a little girl named Lily. She loved to play outside in the sunshine with her dog, Max.">Lily &amp; Max</button>
+            <button type="button" class="sample" data-text="Tom was sad because his red ball was lost. His mom said, &quot;Let's look for it together.&quot; They found it under the big tree, and Tom was happy again.">The lost ball</button>
+            <button type="button" class="sample" data-text="The cat ran to the park. The dog ran after the cat. They ran and ran until they were very tired.">Repetition</button>
+            <button type="button" class="sample" data-text="One day, a brave knight met a friendly dragon. The dragon said, &quot;I am hungry.&quot; The knight shared his bread, and they became best friends.">Knight &amp; dragon</button>
           </div>
+          <label for="an-text" class="sr-only">Text to analyze</label>
+          <textarea id="an-text" rows="4" spellcheck="false">Once upon a time, there was a little girl named Lily. She loved to play outside in the sunshine with her dog, Max.</textarea>
           <div class="toolbar">
-            <label>colour by
-              <select id="an-color"><option value="gate">gate magnitude</option><option value="loss">loss</option><option value="delta">Δloss (ablation)</option></select>
-            </label>
-            <label id="an-layer-wrap">layer <input type="range" id="an-layer" min="0" max="0" value="0"> <b id="an-layer-val">0</b></label>
-            <span id="an-summary" class="muted"></span>
+            <button id="an-run" class="btn primary">Analyze <kbd>Ctrl ⏎</kbd></button>
+            <label class="switch"><input type="checkbox" id="an-ablate" role="switch"><span class="track" aria-hidden="true"></span> Ablate PLE</label>
+            <span id="an-layers" class="layer-boxes" aria-label="Layers to ablate"></span>
+            <label class="check"><input type="checkbox" id="an-all" checked> all layers</label>
+            <button class="info" data-info="ablation"></button>
           </div>
         </div>
         <div class="card">
+          <div class="card-head">
+            <h3>Token stream</h3>
+            <div class="toolbar inline">
+              <select id="an-color" aria-label="Colour tokens by"><option value="gate">gate</option><option value="loss">loss</option><option value="delta">Δloss</option></select>
+              <span id="an-layer-wrap" class="layer-pick"><span class="muted">layer</span> <select id="an-layer" aria-label="Gate layer"></select><b id="an-layer-val" class="sr-only">0</b></span>
+            </div>
+            <button class="info" data-info="chips"></button>
+          </div>
+          <div id="an-summary" class="summary"></div>
           <div id="an-chips" class="chips"></div>
           <div id="an-legend" class="legend"></div>
         </div>
         <div class="card">
-          <h3>Selected token <small id="an-sel-title">hover or click a chip</small></h3>
+          <div class="card-head"><h3>Gate river <small>per-layer PLE gate along the text; hover links to the chips</small></h3><button class="info" data-info="river"></button></div>
+          <div id="an-river" class="chart"></div>
+        </div>
+        <div class="card hidden" id="an-abl-card">
+          <div class="card-head"><h3>Ablation morph <small>per-token loss before → after zeroing the token part</small></h3><button class="info" data-info="ablmorph"></button></div>
+          <div id="an-abl" class="chart"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>Selected token <small id="an-sel-title">hover or click a chip</small></h3><button class="info" data-info="selected"></button></div>
           <div class="grid two tight">
             <div><div class="sub">gate magnitude per layer</div><div id="an-sel-gate" class="chart"></div></div>
             <div><div class="sub">next-token top-5</div><table id="an-sel-top5" class="table"></table></div>
@@ -110,9 +214,9 @@
         </div>
       </div>
       <div class="card side">
-        <h3>PLE contribution <small>mean ‖RMSNorm(W<sub>proj</sub>(…))‖ / ‖h‖</small></h3>
+        <div class="card-head"><h3>PLE contribution <small>mean ‖RMSNorm(W<sub>proj</sub>(…))‖ / ‖h‖</small></h3><button class="info" data-info="contrib"></button></div>
         <div id="an-contrib" class="chart"></div>
-        <h3>Gate magnitude <small>mean over text</small></h3>
+        <div class="card-head"><h3>Gate magnitude <small>mean over text</small></h3><button class="info" data-info="gatemean"></button></div>
         <div id="an-gate-mean" class="chart"></div>
         <div id="an-ablation-summary"></div>
       </div>
@@ -120,58 +224,192 @@
   </section>
 
   <!-- STATS -->
-  <section id="tab-stats" class="tab">
+  <section id="tab-stats" class="tab" role="tabpanel" aria-labelledby="tabbtn-stats">
     <div id="stats-body">
-      <div class="card"><h3>Row-norm histogram per layer <small>‖slice·√p‖ over the whole vocab</small></h3><div id="stats-hist" class="chart"></div></div>
+      <div class="card"><div class="card-head"><h3>Row-norm distribution per layer <small>‖slice·√p‖ over the whole vocab, seen vs. unseen tokens</small></h3><button class="info" data-info="hist"></button></div><div id="stats-hist" class="chart"></div></div>
       <div class="grid two">
-        <div class="card"><h3>Row norm vs. training frequency</h3><div id="stats-freq" class="chart"></div><p id="stats-freq-note" class="hint"></p></div>
-        <div class="card"><h3>int8 quantisation error per layer <small>‖q·s − w‖ / ‖w‖</small></h3><div id="stats-quant" class="chart"></div><p id="stats-quant-note" class="hint"></p></div>
+        <div class="card"><div class="card-head"><h3>Row norm vs. training frequency <small>all tokens, hex-binned; click a hex to open a token</small></h3><button class="info" data-info="normfreq"></button></div><div id="stats-freq" class="chart"></div><p id="stats-freq-note" class="hint"></p></div>
+        <div class="card"><div class="card-head"><h3>int8 quantisation error per layer <small>‖q·s − w‖ / ‖w‖</small></h3><button class="info" data-info="quant"></button></div><div id="stats-quant" class="chart"></div><p id="stats-quant-note" class="hint"></p></div>
       </div>
     </div>
   </section>
 
   <!-- COMPARE -->
-  <section id="tab-compare" class="tab">
-    <div class="card">
-      <textarea id="cmp-text" rows="3">Once upon a time, there was a little girl named Lily. She loved to play outside in the sunshine with her dog, Max.</textarea>
+  <section id="tab-compare" class="tab" role="tabpanel" aria-labelledby="tabbtn-compare">
+    <div class="card composer">
+      <label for="cmp-text" class="sr-only">Text to compare</label>
+      <textarea id="cmp-text" rows="3" spellcheck="false">Once upon a time, there was a little girl named Lily. She loved to play outside in the sunshine with her dog, Max.</textarea>
       <div class="toolbar">
         <label>baseline <select id="cmp-base"></select></label>
+        <span class="vs" aria-hidden="true">vs</span>
         <label>PLE <select id="cmp-ple"></select></label>
-        <button id="cmp-run">Compare</button>
-        <span id="cmp-summary" class="muted"></span>
+        <button id="cmp-run" class="btn primary">Compare</button>
+        <button class="info" data-info="compare"></button>
       </div>
+      <div id="cmp-summary" class="summary"></div>
     </div>
     <div class="card"><div id="cmp-chips" class="chips"></div><div id="cmp-legend" class="legend"></div></div>
-    <div class="card"><h3>Per-token loss <small>baseline − PLE (positive: PLE better)</small></h3><div id="cmp-bars" class="chart"></div></div>
+    <div class="card"><div class="card-head"><h3>Per-token loss <small>slope baseline → PLE, with Δ = baseline − PLE strip (positive: PLE better)</small></h3><button class="info" data-info="slope"></button></div><div id="cmp-bars" class="chart"></div></div>
   </section>
 
   <!-- ABOUT -->
-  <section id="tab-about" class="tab">
-    <div class="card about">
-      <h2>What are Per-Layer Embeddings?</h2>
-      <p>Per-Layer Embeddings (PLE), introduced with Google's Gemma&nbsp;3n, give every transformer layer its own small embedding of the current token, in addition to the usual input embedding.
-      They live in one big table <code>E</code> of shape <code>[V, L·p]</code>: row <code>t</code> holds <code>L</code> slices of size <code>p</code>, one per layer.
-      Because the table is only ever <em>indexed</em> (never multiplied), it can sit in slow memory (CPU RAM or flash) and only the rows for the current tokens need to be fetched, which is why PLE parameters are "cheap".
-      Each layer's input mixes the token's slice with a projection of the ordinary embedding <code>x₀</code>:</p>
-      <pre>u_l = ( E[t]_l · √p · mask_l  +  RMSNorm(W_ctx · x₀ · d^-½)_l ) / √2</pre>
-      <p>After its attention and MLP sublayers, block <code>l</code> computes a gate from the residual stream <code>h</code>, multiplies it element-wise by <code>u_l</code>, and projects back:</p>
-      <pre>h ← h + RMSNorm( W_proj · ( gelu(W_gate · h) ⊙ u_l ) )</pre>
-      <p>The gate decides <em>how much</em> of the token's per-layer information to read in this context, and the slice decides <em>what</em> is read.
-      This explorer shows the slices themselves (Token, Map, Stats), how strongly the model gates them while reading real text (Analyze), and what happens to the loss when they are removed (<em>Ablate PLE</em> sets <code>mask_l = 0</code>) or compared against a baseline model trained without PLE (Compare).</p>
-      <h3>Reading the views</h3>
-      <ul>
-        <li><b>Norms</b>: slices start at norm ≈ 0.02·p; rows that never appear in training stay there, so the norm is a proxy for "how trained" a token is.</li>
-        <li><b>Neighbours</b>: tokens with similar slices in a layer are treated alike by that layer's PLE path. Early layers often group by spelling/surface form, later ones by role.</li>
-        <li><b>Gate magnitude</b>: mean |gelu(W<sub>gate</sub>h)|. High = the layer is reading a lot of this token's slice at this position.</li>
-        <li><b>Contribution ratio</b>: size of the PLE update relative to the residual stream; it is how loudly PLE "speaks" in each layer.</li>
-        <li><b>Δloss</b>: ablated − normal loss. Red tokens got harder to predict without PLE, so the model relies on PLE for them.</li>
-      </ul>
-      <p class="muted">See <code>docs/EXPLORER.md</code> for details.</p>
+  <section id="tab-about" class="tab" role="tabpanel" aria-labelledby="tabbtn-about">
+    <div class="about-hero">
+      <p class="eyebrow">Gemma 3n · Per-Layer Embeddings</p>
+      <h1>Every layer gets its <em>own</em> embedding of every token.</h1>
+      <p class="lede">A PLE table <code>E</code> of shape <code>[V, L·p]</code> stores one small vector per token <em>per layer</em>.
+        It is only ever <em>indexed</em>, never multiplied, so it can live in CPU RAM or flash and stream in a few hundred bytes per token.
+        Scroll to follow one token through the model.</p>
     </div>
+
+    <div class="scrolly">
+      <figure class="flow-fig" aria-labelledby="flow-caption">
+        <svg id="flow" viewBox="0 0 560 500" data-step="1" role="img" aria-label="Diagram: token id selects a table row, the row splits into one slice per layer, each slice is gated and added to the residual stream.">
+          <defs>
+            <linearGradient id="fl-cv" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--accent)"/><stop offset="1" stop-color="var(--gate)"/></linearGradient>
+            <filter id="fl-glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+            <marker id="fl-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="var(--text-muted)"/></marker>
+          </defs>
+
+          <!-- residual stream + blocks (always visible) -->
+          <g class="fl-base">
+            <text x="470" y="30" class="fl-label" text-anchor="middle">residual stream h</text>
+            <line class="fl-resid" x1="470" y1="40" x2="470" y2="488"/>
+            <g class="fl-blocks"></g>
+          </g>
+
+          <!-- 1: token -->
+          <g data-s="1" class="fl-step">
+            <rect x="30" y="40" width="150" height="38" rx="19" class="fl-token"/>
+            <text x="105" y="64" text-anchor="middle" class="fl-mono">·dog → <tspan id="ab-tid2" class="fl-accent">t</tspan></text>
+            <path class="fl-draw" pathLength="1" d="M105 80 V 112" marker-end="url(#fl-arrow)"/>
+          </g>
+
+          <!-- 2: table + row -->
+          <g data-s="2" class="fl-step">
+            <text x="105" y="128" text-anchor="middle" class="fl-label">PLE table E  [V × L·p]</text>
+            <rect x="30" y="136" width="150" height="300" rx="8" class="fl-table"/>
+            <g class="fl-rows"></g>
+            <g class="fl-row" filter="url(#fl-glow)"></g>
+            <text x="22" y="262" text-anchor="end" class="fl-mono fl-small">t</text>
+          </g>
+
+          <!-- 3: slices -->
+          <g data-s="3" class="fl-step fl-slices"></g>
+
+          <!-- 4: context part -->
+          <g data-s="4" class="fl-step">
+            <text x="292" y="48" text-anchor="middle" class="fl-label fl-violet">+ RMSNorm(W<tspan baseline-shift="sub" font-size="8">ctx</tspan>x₀)</text>
+            <line x1="292" y1="56" x2="292" y2="470" class="fl-ctx fl-draw" pathLength="1"/>
+            <g class="fl-ctx-taps"></g>
+          </g>
+
+          <!-- 5: gates -->
+          <g data-s="5" class="fl-step fl-gates"></g>
+
+          <!-- 6: inject -->
+          <g data-s="6" class="fl-step fl-inject"></g>
+        </svg>
+        <figcaption id="flow-caption" class="flow-caption"></figcaption>
+      </figure>
+
+      <ol id="about-steps" class="steps">
+        <li class="step" data-step="1" data-caption="① the token id is known before the forward pass">
+          <span class="step-n">01</span>
+          <h3>A token arrives</h3>
+          <p>The tokenizer turns <span class="tok">·dog</span> into the integer <b id="ab-tid">t</b>. That id is known <em>before</em> the forward pass starts, which is what makes prefetching a table row possible.</p>
+        </li>
+        <li class="step" data-step="2" data-caption="② one row of E is fetched, nothing is multiplied">
+          <span class="step-n">02</span>
+          <h3>Look up one row</h3>
+          <p>The PLE table <code>E</code> has <b id="ab-V">50,304</b> rows of <b id="ab-Lp">384</b> numbers (<span id="ab-table">19.3M</span> parameters in <span id="ab-run" class="tok">ple-small</span>). The model reads exactly one row, <code>E[t]</code>. No matrix multiply touches the table.</p>
+        </li>
+        <li class="step" data-step="3" data-caption="③ the row is cut into L slices of p numbers">
+          <span class="step-n">03</span>
+          <h3>Split it into slices</h3>
+          <p>The row is reshaped to <code>[<span id="ab-L">6</span>, <span id="ab-p">64</span>]</code>: one slice of <span id="ab-p2">64</span> numbers for each of the <span id="ab-L2">6</span> layers, scaled by <code>√p</code>. Each layer gets its <em>own</em>, unrelated vector. Across frequent tokens the cosine between layers is about 0.</p>
+        </li>
+        <li class="step" data-step="4" data-caption="④ each slice is mixed with a projection of the ordinary embedding">
+          <span class="step-n">04</span>
+          <h3>Mix in context</h3>
+          <p>Each slice is averaged with a projection of the normal input embedding <code>x₀</code>, so the layer sees both the token identity and the embedding space:</p>
+          <div class="formula" aria-label="u_l equals E of t, slice l, times root p times mask l, plus RMSNorm of W_ctx x0 d to the minus one half, slice l, all over root 2">
+            <span class="var">u<sub>l</sub></span><span class="op">=</span>
+            <span class="frac"><span class="num">E[t]<sub>l</sub> · √p · mask<sub>l</sub> <span class="op">+</span> RMSNorm(W<sub>ctx</sub> x<sub>0</sub> d<sup>−½</sup>)<sub>l</sub></span><span class="den">√2</span></span>
+          </div>
+        </li>
+        <li class="step" data-step="5" data-caption="⑤ the residual stream decides how much to read: gelu(W_gate·h) ⊙ u_l">
+          <span class="step-n">05</span>
+          <h3>Gate it</h3>
+          <p>After its attention and MLP sublayers, block <code>l</code> computes a gate from its residual stream <code>h</code> and multiplies it element-wise with <code>u<sub>l</sub></code>. The gate decides <em>how much</em> to read; the slice decides <em>what</em>.</p>
+          <div class="formula"><span class="var">g<sub>l</sub></span><span class="op">=</span><span>gelu(W<sub>gate</sub> h)</span><span class="op">⊙</span><span>u<sub>l</sub></span></div>
+        </li>
+        <li class="step" data-step="6" data-caption="⑥ the gated slice is projected and added to the residual stream of all L layers">
+          <span class="step-n">06</span>
+          <h3>Add it to the stream</h3>
+          <p>The gated vector is projected back to <code>d = <span id="ab-d">384</span></code>, normalised and added to the residual stream, in all <span id="ab-L3">6</span> layers:</p>
+          <div class="formula"><span class="var">h</span><span class="op">←</span><span>h</span><span class="op">+</span><span>RMSNorm( W<sub>proj</sub> · g<sub>l</sub> )</span></div>
+          <p class="muted">Ablation in this explorer sets <code>mask<sub>l</sub> = 0</code>: the token part disappears, the context part stays.</p>
+        </li>
+      </ol>
+    </div>
+
+    <section class="results" aria-labelledby="results-title">
+      <h2 id="results-title">What the trained model does with it</h2>
+      <p class="muted">ple-small vs. baseline-small, same budget (24.6M tokens), one seed each. Ablation over 25,500 validation predictions.</p>
+      <div class="result-grid">
+        <div class="result"><b data-count="0.621" data-dec="3" data-prefix="+">+0.621</b><span>nats lost when all PLE token parts are zeroed; 75.5% of tokens get worse</span></div>
+        <div class="result"><b data-count="0.090" data-dec="3" data-prefix="+">+0.090</b><span>layer 0 alone, the most important layer, twice layer 1</span></div>
+        <div class="result"><b data-count="0.87" data-dec="2" data-prefix="ρ ">ρ 0.87</b><span>Spearman correlation of row norm with log token frequency</span></div>
+        <div class="result"><b data-count="19.3" data-dec="1" data-suffix="M">19.3M</b><span>PLE table parameters next to 30.5M dense ones</span></div>
+        <div class="result"><b data-count="95" data-dec="0" data-prefix="−" data-suffix="%">−95%</b><span>table VRAM with a 5% static GPU cache, 95.5–96.5% hit rate</span></div>
+        <div class="result"><b data-count="0.72" data-dec="2" data-suffix="%">0.72%</b><span>relative error of the int8 table; val loss 2.01533 → 2.01535</span></div>
+      </div>
+      <h3>Reading the views</h3>
+      <ul class="reading">
+        <li><b>Norms</b>: slices start at norm ≈ 0.02·p; rows that never appear in training stay there, so the norm is a proxy for "how trained" a token is.</li>
+        <li><b>Neighbours</b>: tokens with similar slices in a layer are treated alike by that layer's PLE path. Full rows are cleanly semantic: <span class="tok">·happy</span> → glad, lucky, cheerful.</li>
+        <li><b>Gate magnitude</b>: mean |gelu(W<sub>gate</sub>h)|. High = the layer is reading a lot of this token's slice at this position.</li>
+        <li><b>Contribution ratio</b>: size of the PLE update relative to the residual stream; how loudly PLE "speaks" in each layer.</li>
+        <li><b>Δloss</b>: ablated − normal loss. Orange tokens got harder to predict without PLE, so the model relies on PLE for them.</li>
+      </ul>
+      <p class="muted">The 0.009 val-loss gap to the baseline is within single-seed noise. See <code>docs/EXPLORER.md</code> for details.</p>
+    </section>
   </section>
 </main>
 
-<div id="loading" class="loading hidden">loading…</div>
+<!-- command palette -->
+<div id="palette" class="palette" hidden>
+  <div class="palette-box" role="dialog" aria-modal="true" aria-label="Command palette">
+    <div class="palette-input">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4"/></svg>
+      <input type="text" placeholder="Type a command, a tab, or a token like ' dog'…" aria-label="Command" role="combobox" aria-expanded="true" aria-controls="palette-list" autocomplete="off" spellcheck="false">
+      <kbd>Esc</kbd>
+    </div>
+    <ul id="palette-list" role="listbox" aria-label="Commands"></ul>
+    <div class="palette-foot"><span><kbd>↑</kbd><kbd>↓</kbd> navigate</span><span><kbd>⏎</kbd> run</span><span><kbd>Esc</kbd> close</span></div>
+  </div>
+</div>
+
+<!-- shortcuts overlay -->
+<div id="shortcuts" class="overlay" hidden>
+  <div class="overlay-box" role="dialog" aria-modal="true" aria-labelledby="shortcuts-title">
+    <div class="card-head"><h3 id="shortcuts-title">Keyboard shortcuts</h3><button class="iconbtn" id="close-shortcuts" type="button" aria-label="Close">×</button></div>
+    <dl class="keys">
+      <dt><kbd>1</kbd>–<kbd>6</kbd></dt><dd>switch tab</dd>
+      <dt><kbd>/</kbd></dt><dd>focus search (token or map)</dd>
+      <dt><kbd>Ctrl</kbd> <kbd>K</kbd></dt><dd>command palette</dd>
+      <dt><kbd>Ctrl</kbd> <kbd>⏎</kbd></dt><dd>run Analyze (in the text box)</dd>
+      <dt><kbd>T</kbd></dt><dd>toggle light / dark theme</dd>
+      <dt><kbd>?</kbd></dt><dd>this overlay</dd>
+      <dt><kbd>Esc</kbd></dt><dd>close dialogs and popovers</dd>
+      <dt><kbd>Alt</kbd> <kbd>←</kbd></dt><dd>browser back: every view has its own URL</dd>
+    </dl>
+  </div>
+</div>
+
+<div id="toasts" class="toasts" aria-live="polite"></div>
+<div id="loading" class="loading hidden" role="status"><span class="spinner" aria-hidden="true"></span>computing…</div>
 <script type="module" src="/static/app.js"></script>
 </body>
 </html>

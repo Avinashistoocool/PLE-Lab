@@ -52,6 +52,44 @@ warning and the API returns HTTP 400 for them. They are used in the Compare tab.
   predict without PLE.
 * Text longer than `block_size` tokens is truncated (with a warning banner); empty text is an error.
 
+## UI
+
+The shell follows the "Instrument Panel" design in `docs/DESIGN_IDEAS.md` §6:
+- a near-black surface with hairline cards and corner ticks;
+- cyan for interaction and amber for PLE/reference values;
+- local Inter and JetBrains Mono fonts with tabular numerals;
+- token strings in mono, with `·` for a space and `⏎` for a newline.
+
+It uses no CDNs at runtime.
+
+* **Themes:** dark is the default. Switch to light with the sun/moon button, `T` or the palette. The choice is stored in `localStorage` (`ple.theme`).
+* **Hash routes** (back/forward work):
+  - `#token/<query>` (e.g. `#token/%20dog` or `#token/%23262`);
+  - `#map`, `#analyze`, `#stats`, `#compare`, `#about`;
+  - any route can add `?run=<name>`.
+* **Shortcuts:**
+
+  | key | action |
+  |---|---|
+  | `1`–`6` | switch tab |
+  | `/` | focus search (Token or Map) |
+  | `Ctrl/Cmd+K` | command palette |
+  | `Ctrl+Enter` | run Analyze |
+  | `T` | toggle theme |
+  | `?` | shortcuts overlay |
+  | `Esc` | close |
+
+* **Command palette:** go to a tab, inspect a token (type e.g. `dog`), analyze sample or typed text, ablate all layers, switch the map between 2D and 3D, toggle the theme, or switch run.
+* **Feedback:**
+  - errors and warnings appear as toasts (they replace the old banner);
+  - a top progress bar shows while requests are running;
+  - skeleton shimmer fills panels while loading;
+  - the "?" buttons on each card explain the chart.
+* **Map 2D | 3D:** a segmented toggle. The default is 3D when WebGL is available, and the choice is stored as `ple.mapmode`.
+  - 3D mode lazily loads `/static/map3d.js` (`mountMap3D`).
+  - If that fails, a note appears and the 2D PCA map is shown instead.
+* **Animated backdrop:** disabled under `prefers-reduced-motion` and paused when the tab is hidden.
+
 ## Tabs
 
 ### Token
@@ -72,6 +110,51 @@ first token and lists the pieces.
 frequency rank or norm, highlight a token with the search box, click a point to open it. Note that
 two PCs typically explain a small fraction of the variance (shown in the header), so the picture is
 only a rough view of the dominant directions (often frequency/norm).
+
+### 3D map
+An interactive three.js view (`explorer/static/map3d.js`, three.js r170 vendored in
+`explorer/static/vendor/three/`, fully offline). Stand-alone demo:
+`http://127.0.0.1:8765/static/map3d-demo.html?run=ple-small`.
+
+**What it shows.** The N most frequent tokens (1000/2000/5000). Layer views use a *shared* 3-D PCA fitted
+on all layers' slices stacked (`[N·L, p]`), so all layers share the same axes and the slider morphs every
+token from its layer-`l` position to its layer-`l+1` position (800 ms, easeInOutCubic; ▶ loops
+0→5→full). The **Full row** view (default) is a separate PCA of the concatenated row. For display, each
+view is centred and scaled to the same RMS radius. Three PCs explain only ~3–4% of the variance per
+slice, so the map shows the dominant directions; the cosine neighbours in the card are exact.
+
+* **Points**: soft glowing sprites, size ∝ log frequency. Colour by k-means cluster (12 clusters on the
+  unit-normalised full row; the legend lists each cluster's top tokens; click one to isolate it), log
+  frequency, slice/row norm (with the init norm marked), or the layer with the largest slice norm.
+* **Hover**: token (`·` = space), id, frequency rank, count, cluster, norm. **Click**: select. Its path
+  through layers 0…L−1 is drawn as a glowing tube with numbered layer markers, with constellation lines
+  to its 8 cosine neighbours in the current layer. The info card shows the per-layer norms (click a bar to
+  jump to that layer), the clickable neighbour list, and the neighbour overlap between consecutive layers.
+  **Double-click** (or *Open in token view*) calls `onTokenClick(id)`.
+* **Search** (`" dog"`, `dog`, `#3290`, or a substring): the camera flies to the token and it pulses.
+  Tokens outside the top N are placed with the same PCA.
+* Labels for the 40 most frequent tokens (fade with distance), cluster labels in the full-row view,
+  starfield, distance fog, grid/axis gizmo, optional bloom, slow idle auto-rotate (stops on interaction,
+  resumes after 6 s). `Esc` clears. Rendering pauses when hidden (IntersectionObserver +
+  `visibilitychange`); DPR ≤ 2; `prefers-reduced-motion` disables auto-rotate and tweens.
+
+**Module API.**
+
+```js
+const m = await import('/static/map3d.js');
+const map = await m.mountMap3D(containerEl, {
+  run: 'ple-small',                        // required
+  api: (path, body) => Promise<json>,      // optional, default: fetch + throw on HTTP error
+  onTokenClick: id => {},                  // optional (double-click / card button)
+  theme: { bg, fg, accent, accent2, muted } // optional, default: the container's CSS variables
+});
+await map.setRun(name); map.setLayer(3 /* or 'full' */); map.highlight(' dog'); map.resize(); map.destroy();
+```
+
+The module injects its own CSS (ref-counted `<style id="m3d-style">`) and builds its overlay UI inside
+the container, which should have a size (it fills it). `destroy()` stops the render loop and removes
+listeners, observers, GPU resources (geometries, materials, textures, render targets, the WebGL context)
+and all DOM it created.
 
 ### Analyze
 Runs the PLE model on your text (traced forward that is checked against the model's own forward in
@@ -104,8 +187,12 @@ Short explanation of PLE and of the formulas above.
 
 `GET /api/runs`, `GET /api/token?run&q|id`, `GET /api/neighbors?run&id&layer&k`,
 `GET /api/layer_similarity?run[&id][&top_n]`, `GET /api/projection?run&layer&n`, `GET /api/stats?run`,
+`GET /api/projection3d?run&n=2000&space=shared|per_layer` (points with per-layer `coords`, `full`,
+`norms`, `cluster`, `max_layer`, plus `clusters` and explained variance; `n` ≤ 5000),
+`GET /api/trajectory?run&id&n&space&k=8` (one token's per-layer and full-row coordinates in the same
+map, its `k` cosine neighbours among the map's tokens per layer, and `neighbor_overlap`),
 `POST /api/analyze {run,text,mask}` (`mask`: `null`, `"all"` or a list of layers),
-`POST /api/compare {text,baseline,ple}`. Errors are HTTP 400 `{"detail": "..."}`.
+`POST /api/compare {text,baseline,ple}`, `GET /api/norm_dist?run[&bins&gx&aspect]` (seen/unseen norm histograms + hexbin), `GET /api/neighbor_graph?run&id[&layer=-1|l|all&k&k2]` (see `explorer/static/viz/README.md`). Errors are HTTP 400 `{"detail": "..."}`.
 
 ## Findings
 

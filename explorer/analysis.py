@@ -361,6 +361,154 @@ def projection(run: LoadedRun, layer: int, n: int, freq: Frequencies) -> dict:
     return res
 
 
+PROJ3D_MAX_N = 5000
+PROJ3D_K = 12
+
+
+def _proj3d_model(run: LoadedRun, n: int, space: str, freq: Frequencies) -> dict:
+    """Fitted 3-D PCA(s) + k-means for the top-n tokens, cached on the run.
+
+    space='shared': one PCA fitted on all layers' slices stacked ([n*L, p]), so every layer lives in the
+    same coordinates and positions can be morphed between layers. space='per_layer': one PCA per layer.
+    The full concatenated row always gets its own PCA. Coordinates are divided by one scale per space
+    (the max |coord| over the shared layers, or per layer), so they lie in [-1, 1]."""
+    if space not in ("shared", "per_layer"):
+        raise ExplorerError(f"space must be 'shared' or 'per_layer', got '{space}'")
+    key = ("proj3d_model", n, space, freq.key())
+    with run.lock:
+        if key in run.caches:
+            return run.caches[key]
+    from sklearn.cluster import KMeans
+
+    rows = run.token_rows()
+    L, p = run.cfg.n_layer, run.cfg.ple_dim
+    ids, counts = freq.top_ids(n, rows.shape[0])
+    x = rows[ids].astype(np.float32)  # [n, L, p]
+    full = x.reshape(len(ids), -1)
+    ncomp = min(3, p, len(ids))
+
+    def fit(a: np.ndarray) -> PCA:
+        return PCA(n_components=ncomp, random_state=0).fit(a)
+
+    def pad3(a: np.ndarray) -> np.ndarray:
+        return np.pad(a, [(0, 0)] * (a.ndim - 1) + [(0, 3 - a.shape[-1])])
+
+    if space == "shared":
+        pca = fit(x.reshape(-1, p))
+        coords = pad3(pca.transform(x.reshape(-1, p)).reshape(len(ids), L, ncomp))
+        scale = float(np.abs(coords).max()) or 1.0
+        pcas, scales = [pca] * L, [scale] * L
+        ev = [_r(pca.explained_variance_ratio_, 4)] * L
+    else:
+        pcas = [fit(x[:, l]) for l in range(L)]
+        coords = np.stack([pad3(pcas[l].transform(x[:, l])) for l in range(L)], 1)
+        scales = [float(np.abs(coords[:, l]).max()) or 1.0 for l in range(L)]
+        ev = [_r(pc.explained_variance_ratio_, 4) for pc in pcas]
+    coords = coords / np.array(scales, dtype=np.float32)[None, :, None]
+    pca_full = fit(full)
+    cf = pad3(pca_full.transform(full))
+    scale_full = float(np.abs(cf).max()) or 1.0
+    cf = cf / scale_full
+
+    unit = full / np.maximum(np.linalg.norm(full, axis=-1, keepdims=True), 1e-12)
+    k = max(1, min(PROJ3D_K, len(ids)))
+    labels = KMeans(n_clusters=k, n_init=4, random_state=0).fit_predict(unit)
+    sub = torch.from_numpy(x / np.maximum(np.linalg.norm(x, axis=-1, keepdims=True), 1e-12))  # [n, L, p]
+    sub_full = torch.from_numpy(unit)
+    res = {
+        "ids": ids, "counts": counts, "coords": coords.astype(np.float32), "full": cf.astype(np.float32),
+        "norms": np.linalg.norm(x, axis=-1), "full_norm": np.linalg.norm(full, axis=-1),
+        "labels": labels, "k": k, "pcas": pcas, "scales": scales, "pca_full": pca_full,
+        "scale_full": scale_full, "ev": ev, "ev_full": _r(pca_full.explained_variance_ratio_, 4),
+        "unit": sub, "unit_full": sub_full, "index": {int(t): j for j, t in enumerate(ids)},
+    }
+    with run.lock:
+        run.caches[key] = res
+    return res
+
+
+def projection3d(run: LoadedRun, n: int, space: str, freq: Frequencies) -> dict:
+    """3-D map of the top-n tokens in every layer (+ the full row). See docs/EXPLORER.md#3d-map."""
+    run.require_ple()
+    n = max(10, min(int(n), PROJ3D_MAX_N))
+    key = ("proj3d", n, space, freq.key())
+    with run.lock:
+        if key in run.caches:
+            return run.caches[key]
+    m = _proj3d_model(run, n, space, freq)
+    ids, counts, labels = m["ids"], m["counts"], m["labels"]
+    logf = np.log10(counts.astype(np.float64) + 1) if counts is not None else np.zeros(len(ids))
+    # float32 math, rounded in float64 so the JSON floats stay short (float32 -> float repr is long)
+    coords = np.asarray(m["coords"], dtype=np.float64).round(4)
+    full = np.asarray(m["full"], dtype=np.float64).round(4)
+    norms = np.asarray(m["norms"], dtype=np.float32)
+    clusters = []
+    for c in range(m["k"]):
+        members = np.nonzero(labels == c)[0]  # ids are sorted by frequency, so members[:8] are the top ones
+        clusters.append({"id": c, "size": int(len(members)),
+                         "top": [piece(int(ids[j])) for j in members[:8]],
+                         "centroid": _r(full[members].mean(0), 4) if len(members) else [0, 0, 0]})
+    points = [
+        {"id": int(t), "piece": piece(int(t)), "rank": j,
+         "freq": int(counts[j]) if counts is not None else None, "log_freq": round(float(logf[j]), 4),
+         "coords": coords[j].tolist(), "full": full[j].tolist(),
+         "norms": np.round(norms[j].astype(np.float64), 4).tolist(),
+         "full_norm": round(float(m["full_norm"][j]), 4),
+         "max_layer": int(norms[j].argmax()), "cluster": int(labels[j])}
+        for j, t in enumerate(ids)
+    ]
+    res = {
+        "n": int(len(ids)), "space": space, "n_layer": run.cfg.n_layer, "ple_dim": run.cfg.ple_dim,
+        "source": "frequency" if counts is not None else "ids 0..n (no train.bin)",
+        "explained_variance": m["ev"], "explained_variance_full": m["ev_full"],
+        "k": m["k"], "clusters": clusters,
+        "init_norm": 0.02 * run.cfg.ple_dim,
+        "points": points,
+    }
+    with run.lock:
+        run.caches[key] = res
+    return res
+
+
+def trajectory(run: LoadedRun, tid: int, n: int, space: str, freq: Frequencies, k: int = 8) -> dict:
+    """Path of one token through the 3-D map across layers, plus its k nearest neighbours (cosine)
+    among the map's top-n tokens in every layer and in the full row. Works for tokens outside the map."""
+    run.require_ple()
+    run.check_id(tid)
+    n = max(10, min(int(n), PROJ3D_MAX_N))
+    k = max(1, min(int(k), 32))
+    m = _proj3d_model(run, n, space, freq)
+    rows = run.token_rows()
+    L = run.cfg.n_layer
+    v = rows[tid].astype(np.float32)  # [L, p]
+    coords = []
+    for l in range(L):
+        c = m["pcas"][l].transform(v[l:l + 1])[0]
+        coords.append(np.pad(c, (0, 3 - len(c))) / m["scales"][l])
+    cf = m["pca_full"].transform(v.reshape(1, -1))[0]
+    cf = np.pad(cf, (0, 3 - len(cf))) / m["scale_full"]
+    ids = m["ids"]
+    self_idx = m["index"].get(tid)
+
+    def nn(unit: torch.Tensor, q: np.ndarray) -> list[dict]:
+        qn = torch.from_numpy(q / max(float(np.linalg.norm(q)), 1e-12))
+        sims = unit @ qn
+        if self_idx is not None:
+            sims[self_idx] = -2.0
+        val, idx = torch.topk(sims, min(k, len(ids) - (self_idx is not None)))
+        return [{"id": int(ids[j]), "piece": piece(int(ids[j])), "index": int(j), "sim": round(float(s), 4)}
+                for s, j in zip(val, idx)]
+
+    layers = [{"layer": l, "coords": _r(coords[l], 4), "norm": round(float(np.linalg.norm(v[l])), 4),
+               "neighbors": nn(m["unit"][:, l], v[l])} for l in range(L)]
+    full = {"coords": _r(cf, 4), "norm": round(float(np.linalg.norm(v)), 4),
+            "neighbors": nn(m["unit_full"], v.reshape(-1))}
+    sets = [{x["id"] for x in lay["neighbors"]} for lay in layers]
+    overlap = [round(len(sets[l] & sets[l + 1]) / k, 4) for l in range(L - 1)]
+    return {"id": tid, "piece": piece(tid), "n": int(len(ids)), "space": space, "index": self_idx,
+            "layers": layers, "full": full, "neighbor_overlap": overlap}
+
+
 def quant_error(run: LoadedRun) -> list[dict] | None:
     """Per-layer relative L2 error and mean per-row max-abs error of the int8 table vs. the f16 table."""
     if not (run.path / "ple_table.i8.bin").exists():
@@ -415,6 +563,151 @@ def stats(run: LoadedRun, freq: Frequencies, bins: int = 40, sample: int = 3000)
     with run.lock:
         run.caches[key] = res
     return res
+
+
+# ---------------------------------------------------------------- chart data (static/viz)
+
+def norm_dist(run: LoadedRun, freq: Frequencies, bins: int = 48, gx: int = 36, aspect: float = 0.5) -> dict:
+    """Data for the ridgeline + hexbin charts (explorer/static/viz).
+
+    hist: per-layer slice-norm histograms split into tokens seen in train.bin (count > 0) and unseen.
+    hexbin: all GPT-2 tokens binned on (x = log10(1+count), y = full-row norm). Coordinates are
+    normalised so x spans [0, 1] and y spans [0, aspect]; hexagons (pointy-top, d3-hexbin layout) have
+    radius 1 / (gx * sqrt(3)) in those units (gx hexagons across). Bin y grows upwards (data space)."""
+    bins = max(8, min(int(bins), 200))
+    gx = max(4, min(int(gx), 200))
+    aspect = max(0.1, min(float(aspect), 4.0))
+    key = ("norm_dist", bins, gx, round(aspect, 4), freq.key())
+    with run.lock:
+        if key in run.caches:
+            return run.caches[key]
+    rows = run.token_rows()
+    limit = min(rows.shape[0], GPT2_VOCAB)
+    L = run.cfg.n_layer
+    norms = np.linalg.norm(rows[:limit], axis=-1)  # [V', L]
+    full = np.linalg.norm(rows[:limit].reshape(limit, -1), axis=-1)
+    counts = freq.counts()
+    c = counts[:limit] if counts is not None else None
+    seen = c > 0 if c is not None else np.ones(limit, dtype=bool)
+    init = 0.02 * run.cfg.ple_dim
+    edges = np.linspace(0.0, float(norms.max()) * 1.0001 + 1e-9, bins + 1)
+    layers = []
+    for l in range(L):
+        x = norms[:, l]
+        layers.append({
+            "layer": l,
+            "seen": np.histogram(x[seen], bins=edges)[0].tolist(),
+            "unseen": np.histogram(x[~seen], bins=edges)[0].tolist(),
+            "mean": round(float(x.mean()), 5), "mean_seen": round(float(x[seen].mean()), 5) if seen.any() else None,
+            "median": round(float(np.median(x)), 5), "p99": round(float(np.percentile(x, 99)), 5),
+            "frac_gt_2x_init": round(float((x > 2 * init).mean()), 5),
+        })
+    res: dict = {
+        "n_layer": L, "ple_dim": run.cfg.ple_dim, "vocab": limit, "init_norm": init,
+        "init_full_norm": init * math.sqrt(L), "has_freq": c is not None,
+        "n_seen": int(seen.sum()), "n_unseen": int((~seen).sum()),
+        "edges": _r(edges, 5), "layers": layers, "hexbin": None, "trend": None,
+    }
+    if c is not None:
+        lx = np.log10(c.astype(np.float64) + 1)
+        x0, x1 = 0.0, float(lx.max()) or 1.0
+        y0, y1 = 0.0, float(full.max()) * 1.02 or 1.0
+        nx = (lx - x0) / (x1 - x0)
+        ny = (full - y0) / (y1 - y0) * aspect
+        r = 1.0 / (gx * math.sqrt(3))
+        dx, dy = r * 2 * math.sin(math.pi / 3), r * 1.5
+        # d3-hexbin assignment: nearest of the two candidate row centres
+        pj = ny / dy
+        pi = nx / dx
+        pj0 = np.round(pj)
+        pi0 = np.round(pi - (pj0.astype(np.int64) & 1) / 2)
+        pj1 = np.where(pj - pj0 < 0, pj0 - 1, pj0 + 1)
+        pi1 = np.round(pi - (pj1.astype(np.int64) & 1) / 2)
+        d0 = (pi - pi0 - (pj0.astype(np.int64) & 1) / 2) ** 2 * dx * dx + (pj - pj0) ** 2 * dy * dy
+        d1 = (pi - pi1 - (pj1.astype(np.int64) & 1) / 2) ** 2 * dx * dx + (pj - pj1) ** 2 * dy * dy
+        use1 = d1 < d0
+        bj = np.where(use1, pj1, pj0).astype(np.int64)
+        bi = np.where(use1, pi1, pi0).astype(np.int64)
+        keys = (bj + 1) * 100_000 + (bi + 1)  # bi, bj >= -1 since nx, ny >= 0
+        uniq, inv, cnt = np.unique(keys, return_inverse=True, return_counts=True)
+        order = np.argsort(-c, kind="stable")  # examples = most frequent members
+        first: dict[int, list[int]] = {}
+        for t in order:
+            b = int(inv[t])
+            lst = first.setdefault(b, [])
+            if len(lst) < 3:
+                lst.append(int(t))
+        hb = []
+        sum_n = np.bincount(inv, weights=full)
+        sum_f = np.bincount(inv, weights=lx)
+        for b, (k_, n_) in enumerate(zip(uniq, cnt)):
+            j, i = divmod(int(k_), 100_000)
+            j, i = j - 1, i - 1
+            hb.append({"x": round((i + (j & 1) / 2) * dx, 5), "y": round(j * dy, 5), "n": int(n_),
+                       "mean_norm": round(float(sum_n[b] / n_), 4), "mean_logf": round(float(sum_f[b] / n_), 4),
+                       "examples": [{"id": t, "piece": piece(t), "freq": int(c[t]), "norm": round(float(full[t]), 4)}
+                                    for t in first.get(b, [])]})
+        res["hexbin"] = {"gx": gx, "aspect": aspect, "radius": r, "x_domain": [x0, x1], "y_domain": [y0, y1],
+                         "x_label": "log10(1 + train count)", "y_label": "full-row norm", "bins": hb}
+        lb = np.floor(lx * 4) / 4
+        res["trend"] = [{"log10_freq": float(b), "mean_norm": round(float(full[lb == b].mean()), 4),
+                         "count": int((lb == b).sum())} for b in np.unique(lb)]
+    with run.lock:
+        run.caches[key] = res
+    return res
+
+
+def neighbor_graph(run: LoadedRun, tid: int, layer: int | str = -1, k: int = 12, k2: int = 2) -> dict:
+    """Ego graph for the force layout: root + top-k cosine neighbours in `layer` (-1 = full row) or in
+    every layer (layer='all': nodes are the union, one root link per layer that found the node).
+    Extra links connect each neighbour to its top-k2 most similar other nodes (full-row cosine)."""
+    run.check_id(tid)
+    L = run.cfg.n_layer
+    k = max(1, min(int(k), 50))
+    k2 = max(0, min(int(k2), 8))
+    if isinstance(layer, str) and layer != "all":
+        try:
+            layer = int(layer)
+        except ValueError:
+            raise ExplorerError(f"layer must be an integer or 'all', got '{layer}'") from None
+    layers = list(range(L)) if layer == "all" else [int(layer)]
+    for l in layers:
+        run.check_layer(l)
+    limit = min(run.vocab, GPT2_VOCAB)
+    nodes: dict[int, dict] = {tid: {"id": tid, "piece": piece(tid), "root": True, "layers": [], "sim": 1.0}}
+    links = []
+    for l in layers:
+        m = run.normalized(l)
+        sims = m[:limit] @ m[tid]
+        if tid < limit:
+            sims[tid] = -2.0
+        val, idx = torch.topk(sims, min(k, limit - 1))
+        for s, i in zip(val.cpu().tolist(), idx.cpu().tolist()):
+            n = nodes.setdefault(i, {"id": i, "piece": piece(i), "root": False, "layers": [], "sim": -1.0})
+            n["layers"].append(l)
+            n["sim"] = max(n["sim"], round(s, 4))
+            links.append({"source": tid, "target": i, "sim": round(s, 4), "layer": l, "kind": "root"})
+    ids = list(nodes)
+    if k2 and len(ids) > 2:
+        m = run.normalized(-1)
+        sub = m[torch.tensor(ids, device=m.device)]
+        s = (sub @ sub.T).cpu()
+        s.fill_diagonal_(-2.0)
+        s[0, :] = -2.0
+        s[:, 0] = -2.0
+        seen_pairs = set()
+        for a in range(1, len(ids)):
+            val, idx = torch.topk(s[a], min(k2, len(ids) - 2))
+            for v, b in zip(val.tolist(), idx.tolist()):
+                pair = (min(a, b), max(a, b))
+                if b == 0 or pair in seen_pairs:
+                    continue
+                seen_pairs.add(pair)
+                links.append({"source": ids[a], "target": ids[b], "sim": round(v, 4), "layer": -1, "kind": "peer"})
+    for n in nodes.values():
+        n["shared"] = len(n["layers"])
+    return {"id": tid, "piece": piece(tid), "layer": layer, "layers": layers, "k": k, "k2": k2,
+            "nodes": list(nodes.values()), "links": links}
 
 
 # ---------------------------------------------------------------- model analysis
