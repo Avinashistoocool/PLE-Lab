@@ -1,0 +1,11 @@
+{
+  "vocab": 50304,
+  "n_layer": 12,
+  "ple_dim": 256,
+  "row_width": 3072,
+  "files": {
+    "f16": "ple_table.f16.bin",
+    "i8": "ple_table.i8.bin",
+    "i8_scale": "ple_table.i8.scale.bin"
+  }
+}

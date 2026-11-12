@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PLE Explorer</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <div class="brand">PLE <span>Explorer</span></div>
+  <nav id="tabs">
+    <button data-tab="token" class="active">Token</button>
+    <button data-tab="map">Map</button>
+    <button data-tab="analyze">Analyze</button>
+    <button data-tab="stats">Stats</button>
+    <button data-tab="compare">Compare</button>
+    <button data-tab="about">About</button>
+  </nav>
+  <div class="run-picker">
+    <label for="run">run</label>
+    <select id="run"></select>
+    <span id="run-info" class="muted"></span>
+  </div>
+</header>
+<div id="banner" class="banner hidden"></div>
+
+<main>
+  <!-- TOKEN -->
+  <section id="tab-token" class="tab active">
+    <form id="token-form" class="toolbar">
+      <input id="token-q" placeholder="token text (e.g. ' cat') or #id" value=" the" autocomplete="off">
+      <button type="submit">Look up</button>
+      <span id="token-pieces" class="muted"></span>
+    </form>
+    <div id="token-head" class="token-head"></div>
+    <div class="grid two">
+      <div class="card">
+        <h3>Per-layer row norm <small>‖E[t]<sub>l</sub>·√p‖</small></h3>
+        <div id="token-norms" class="chart"></div>
+        <p class="hint">Dashed line = expected norm at initialisation. Bars far above it were pushed by training.</p>
+      </div>
+      <div class="card">
+        <h3>Layer similarity <small>cos(slice<sub>i</sub>, slice<sub>j</sub>)</small></h3>
+        <div class="grid two tight">
+          <div><div class="sub">this token</div><div id="token-sim" class="chart"></div></div>
+          <div><div class="sub" id="global-sim-title">average over frequent tokens</div><div id="global-sim" class="chart"></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Vectors <small>L × p heatmap of the token part (blue −, red +)</small></h3>
+      <div id="token-heat" class="chart"></div>
+    </div>
+    <div class="card">
+      <h3>Nearest tokens <small>cosine similarity in one layer slice</small></h3>
+      <div class="toolbar">
+        <label>layer <select id="nb-layer"></select></label>
+        <label>k <input id="nb-k" type="number" min="1" max="200" value="20" style="width:60px"></label>
+      </div>
+      <table id="nb-table" class="table"></table>
+    </div>
+  </section>
+
+  <!-- MAP -->
+  <section id="tab-map" class="tab">
+    <div class="toolbar">
+      <label>layer <select id="map-layer"></select></label>
+      <label>tokens <select id="map-n"><option>500</option><option selected>2000</option><option>5000</option></select></label>
+      <label>colour <select id="map-color"><option value="rank">frequency rank</option><option value="norm">row norm</option></select></label>
+      <input id="map-find" placeholder="highlight token…" autocomplete="off">
+      <span id="map-info" class="muted"></span>
+    </div>
+    <div class="card"><div id="map-plot" class="chart"></div>
+      <p class="hint">PCA of the token-part slice for the chosen layer. Hover for the token, click to open it in the Token tab. Labels shown for the 40 most frequent tokens.</p>
+    </div>
+  </section>
+
+  <!-- ANALYZE -->
+  <section id="tab-analyze" class="tab">
+    <div class="grid analyze">
+      <div>
+        <div class="card">
+          <textarea id="an-text" rows="4">Once upon a time, there was a little girl named Lily. She loved to play outside in the sunshine with her dog, Max.</textarea>
+          <div class="toolbar">
+            <button id="an-run">Analyze</button>
+            <label class="check"><input type="checkbox" id="an-ablate"> Ablate PLE</label>
+            <span id="an-layers" class="layer-boxes"></span>
+            <label class="check"><input type="checkbox" id="an-all" checked> all layers</label>
+          </div>
+          <div class="toolbar">
+            <label>colour by
+              <select id="an-color"><option value="gate">gate magnitude</option><option value="loss">loss</option><option value="delta">Δloss (ablation)</option></select>
+            </label>
+            <label id="an-layer-wrap">layer <input type="range" id="an-layer" min="0" max="0" value="0"> <b id="an-layer-val">0</b></label>
+            <span id="an-summary" class="muted"></span>
+          </div>
+        </div>
+        <div class="card">
+          <div id="an-chips" class="chips"></div>
+          <div id="an-legend" class="legend"></div>
+        </div>
+        <div class="card">
+          <h3>Selected token <small id="an-sel-title">hover or click a chip</small></h3>
+          <div class="grid two tight">
+            <div><div class="sub">gate magnitude per layer</div><div id="an-sel-gate" class="chart"></div></div>
+            <div><div class="sub">next-token top-5</div><table id="an-sel-top5" class="table"></table></div>
+          </div>
+        </div>
+      </div>
+      <div class="card side">
+        <h3>PLE contribution <small>mean ‖RMSNorm(W<sub>proj</sub>(…))‖ / ‖h‖</small></h3>
+        <div id="an-contrib" class="chart"></div>
+        <h3>Gate magnitude <small>mean over text</small></h3>
+        <div id="an-gate-mean" class="chart"></div>
+        <div id="an-ablation-summary"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATS -->
+  <section id="tab-stats" class="tab">
+    <div id="stats-body">
+      <div class="card"><h3>Row-norm histogram per layer <small>‖slice·√p‖ over the whole vocab</small></h3><div id="stats-hist" class="chart"></div></div>
+      <div class="grid two">
+        <div class="card"><h3>Row norm vs. training frequency</h3><div id="stats-freq" class="chart"></div><p id="stats-freq-note" class="hint"></p></div>
+        <div class="card"><h3>int8 quantisation error per layer <small>‖q·s − w‖ / ‖w‖</small></h3><div id="stats-quant" class="chart"></div><p id="stats-quant-note" class="hint"></p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- COMPARE -->
+  <section id="tab-compare" class="tab">
+    <div class="card">
+      <textarea id="cmp-text" rows="3">Once upon a time, there was a little girl named Lily. She loved to play outside in the sunshine with her dog, Max.</textarea>
+      <div class="toolbar">
+        <label>baseline <select id="cmp-base"></select></label>
+        <label>PLE <select id="cmp-ple"></select></label>
+        <button id="cmp-run">Compare</button>
+        <span id="cmp-summary" class="muted"></span>
+      </div>
+    </div>
+    <div class="card"><div id="cmp-chips" class="chips"></div><div id="cmp-legend" class="legend"></div></div>
+    <div class="card"><h3>Per-token loss <small>baseline − PLE (positive: PLE better)</small></h3><div id="cmp-bars" class="chart"></div></div>
+  </section>
+
+  <!-- ABOUT -->
+  <section id="tab-about" class="tab">
+    <div class="card about">
+      <h2>What are Per-Layer Embeddings?</h2>
+      <p>Per-Layer Embeddings (PLE), introduced with Google's Gemma&nbsp;3n, give every transformer layer its own small embedding of the current token, in addition to the usual input embedding.
+      They live in one big table <code>E</code> of shape <code>[V, L·p]</code>: row <code>t</code> holds <code>L</code> slices of size <code>p</code>, one per layer.
+      Because the table is only ever <em>indexed</em> (never multiplied), it can sit in slow memory (CPU RAM or flash) and only the rows for the current tokens need to be fetched, which is why PLE parameters are "cheap".
+      Each layer's input mixes the token's slice with a projection of the ordinary embedding <code>x₀</code>:</p>
+      <pre>u_l = ( E[t]_l · √p · mask_l  +  RMSNorm(W_ctx · x₀ · d^-½)_l ) / √2</pre>
+      <p>After its attention and MLP sublayers, block <code>l</code> computes a gate from the residual stream <code>h</code>, multiplies it element-wise by <code>u_l</code>, and projects back:</p>
+      <pre>h ← h + RMSNorm( W_proj · ( gelu(W_gate · h) ⊙ u_l ) )</pre>
+      <p>The gate decides <em>how much</em> of the token's per-layer information to read in this context, and the slice decides <em>what</em> is read.
+      This explorer shows the slices themselves (Token, Map, Stats), how strongly the model gates them while reading real text (Analyze), and what happens to the loss when they are removed (<em>Ablate PLE</em> sets <code>mask_l = 0</code>) or compared against a baseline model trained without PLE (Compare).</p>
+      <h3>Reading the views</h3>
+      <ul>
+        <li><b>Norms</b>: slices start at norm ≈ 0.02·p; rows that never appear in training stay there, so the norm is a proxy for "how trained" a token is.</li>
+        <li><b>Neighbours</b>: tokens with similar slices in a layer are treated alike by that layer's PLE path. Early layers often group by spelling/surface form, later ones by role.</li>
+        <li><b>Gate magnitude</b>: mean |gelu(W<sub>gate</sub>h)|. High = the layer is reading a lot of this token's slice at this position.</li>
+        <li><b>Contribution ratio</b>: size of the PLE update relative to the residual stream; it is how loudly PLE "speaks" in each layer.</li>
+        <li><b>Δloss</b>: ablated − normal loss. Red tokens got harder to predict without PLE, so the model relies on PLE for them.</li>
+      </ul>
+      <p class="muted">See <code>docs/EXPLORER.md</code> for details.</p>
+    </div>
+  </section>
+</main>
+
+<div id="loading" class="loading hidden">loading…</div>
+<script type="module" src="/static/app.js"></script>
+</body>
+</html>

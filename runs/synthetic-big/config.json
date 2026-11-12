@@ -1,0 +1,14 @@
+{
+  "config": {
+    "vocab_size": 50304,
+    "block_size": 256,
+    "n_layer": 12,
+    "n_head": 4,
+    "d_model": 256,
+    "dropout": 0.0,
+    "ple_dim": 256,
+    "ple_vocab_size": null
+  },
+  "note": "synthetic random-init model for offload benchmarks",
+  "tokenizer": "gpt2"
+}

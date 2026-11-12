@@ -1,0 +1,60 @@
+{
+  "runs": [
+    {
+      "name": "baseline-small",
+      "ple_dim": 0,
+      "n_layer": 6,
+      "d_model": 384,
+      "val_loss": 2.028779172897339,
+      "train_loss": 2.0463926792144775,
+      "params_total": 30036864,
+      "params_ple_table": 0,
+      "params_dense": 30036864,
+      "tokens_seen": 24576000,
+      "tokens_per_s": 34797.22715752071,
+      "elapsed_s": 705.7532691955566
+    },
+    {
+      "name": "demo-random",
+      "ple_dim": 32,
+      "n_layer": 4,
+      "d_model": 128,
+      "val_loss": null,
+      "train_loss": null,
+      "params_total": null,
+      "params_ple_table": null,
+      "params_dense": null,
+      "tokens_seen": null,
+      "tokens_per_s": null,
+      "elapsed_s": null
+    },
+    {
+      "name": "ple-small",
+      "ple_dim": 64,
+      "n_layer": 6,
+      "d_model": 384,
+      "val_loss": 2.019756776094437,
+      "train_loss": 2.0295236110687256,
+      "params_total": 49798336,
+      "params_ple_table": 19316736,
+      "params_dense": 30481600,
+      "tokens_seen": 24576000,
+      "tokens_per_s": 27099.009421980198,
+      "elapsed_s": 906.4473741054535
+    },
+    {
+      "name": "synthetic-big",
+      "ple_dim": 256,
+      "n_layer": 12,
+      "d_model": 256,
+      "val_loss": null,
+      "train_loss": null,
+      "params_total": null,
+      "params_ple_table": null,
+      "params_dense": null,
+      "tokens_seen": null,
+      "tokens_per_s": null,
+      "elapsed_s": null
+    }
+  ]
+}

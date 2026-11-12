@@ -1,0 +1,15 @@
+{
+  "config": {
+    "vocab_size": 50304,
+    "block_size": 128,
+    "n_layer": 4,
+    "n_head": 4,
+    "d_model": 128,
+    "dropout": 0.0,
+    "ple_dim": 32,
+    "ple_vocab_size": null
+  },
+  "val_loss": null,
+  "tokenizer": "gpt2",
+  "note": "random init (explorer demo)"
+}

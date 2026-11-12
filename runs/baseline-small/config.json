@@ -1,0 +1,51 @@
+{
+  "config": {
+    "vocab_size": 50304,
+    "block_size": 256,
+    "n_layer": 6,
+    "n_head": 6,
+    "d_model": 384,
+    "dropout": 0.0,
+    "ple_dim": 0,
+    "ple_vocab_size": null
+  },
+  "val_loss": 2.028779172897339,
+  "train_loss": 2.0463926792144775,
+  "tokenizer": "gpt2",
+  "dataset": "tinystories",
+  "iters": 3000,
+  "tokens_seen": 24576000,
+  "tokens_per_s": 34797.22715752071,
+  "elapsed_s": 705.7532691955566,
+  "param_breakdown": {
+    "total": 30036864,
+    "ple_table": 0,
+    "dense": 30036864
+  },
+  "train_args": {
+    "name": "baseline-small",
+    "preset": "small",
+    "ple_dim": 0,
+    "n_layer": null,
+    "d_model": null,
+    "n_head": null,
+    "block_size": null,
+    "vocab_size": 50304,
+    "dropout": 0.0,
+    "batch_size": 16,
+    "grad_accum": 2,
+    "max_iters": 3000,
+    "lr": 0.001,
+    "warmup": null,
+    "weight_decay": 0.1,
+    "grad_clip": 1.0,
+    "eval_interval": 250,
+    "eval_iters": 40,
+    "data": "data/tinystories",
+    "dataset": "tinystories",
+    "out": "runs",
+    "device": null,
+    "seed": 1337,
+    "compile": false
+  }
+}
