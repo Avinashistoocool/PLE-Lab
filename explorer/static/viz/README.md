@@ -1,6 +1,6 @@
 # `static/viz/`: interactive charts
 
-These are standalone ES modules with no build step. They use d3 v7.9.0, vendored in `../vendor/d3/` (ISC licence) and loaded through the ESM shim `vendor/d3/d3.js`.
+These files are standalone ES modules with no build step. They use d3 v7.9.0. The d3 copy is in `../vendor/d3/` (ISC licence), and the ESM shim `vendor/d3/d3.js` loads it.
 
 ```js
 import * as viz from './viz/index.js';
@@ -8,10 +8,10 @@ import * as viz from './viz/index.js';
 
 ## Conventions
 
-* Every chart has the form `render(el, data, opts)` and returns `{update(data), destroy(), ...}`. Charts keep no global state; the only shared pieces are one tooltip element and `viz.css`, which is injected automatically.
-* Colours come from the CSS custom properties in DESIGN_IDEAS §6: `--accent`, `--ple`, `--pos`, `--neg`, `--zero`, `--l0`…`--l5`, `--surface*`, `--hairline*` and `--text*`. Each has a fallback value. Magnitudes use viridis; signed values use blue ↔ orange.
-* Motion lasts 300–1100 ms with easing. Animation is skipped when `prefers-reduced-motion: reduce` is set, or when `<html data-motion="reduced|off">` is present.
-* Charts with many marks (glyph, heatmap, hexbin) draw on canvas; the others use SVG. All charts resize with their container.
+* Each chart has the form `render(el, data, opts)` and returns `{update(data), destroy(), ...}`. The charts keep no global state. They share only one tooltip element and `viz.css`. The code adds `viz.css` to the page automatically.
+* The colours come from the CSS custom properties in DESIGN_IDEAS §6: `--accent`, `--ple`, `--pos`, `--neg`, `--zero`, `--l0`…`--l5`, `--surface*`, `--hairline*` and `--text*`. Each property has a fallback value. Magnitudes use viridis. Signed values use blue ↔ orange.
+* Motion lasts 300–1100 ms with easing. The charts do not show animation when `prefers-reduced-motion: reduce` is set, or when `<html data-motion="reduced|off">` is present.
+* Charts with many marks (glyph, heatmap, hexbin) draw on canvas. The other charts use SVG. All charts change their size with their container.
 
 ## Charts
 
@@ -33,21 +33,21 @@ import * as viz from './viz/index.js';
 
 The code is in `explorer/analysis.py` and the tests are in `tests/test_explorer.py`.
 
-* `GET /api/norm_dist?run&bins&gx&aspect` returns the following (cached per run):
+* `GET /api/norm_dist?run&bins&gx&aspect` returns the items that follow. The server keeps them in a cache for each run.
   * `edges[B+1]`;
   * `layers[{layer, seen[B], unseen[B], mean, mean_seen, median, p99, frac_gt_2x_init}]`, where "seen" means a train.bin count > 0;
   * `init_norm`, `init_full_norm`, `n_seen` and `n_unseen`;
-  * `hexbin{radius, aspect, x_domain, y_domain, bins[{x, y, n, mean_norm, mean_logf, examples}]}`, covering all about 50k tokens on x = log10(1+count) and y = full-row norm. Coordinates are normalised to x ∈ [0,1] and y ∈ [0,aspect], using the d3-hexbin layout;
+  * `hexbin{radius, aspect, x_domain, y_domain, bins[{x, y, n, mean_norm, mean_logf, examples}]}`. This item shows all of the about 50k tokens, with x = log10(1+count) and y = the norm of the full row. The coordinates are normalised to x ∈ [0,1] and y ∈ [0,aspect], with the d3-hexbin layout;
   * `trend`.
 * `GET /api/neighbor_graph?run&id&layer&k=12&k2=2` returns:
   * `nodes[{id, piece, root, layers[], sim, shared}]`;
   * `links[{source, target, sim, layer, kind: root|peer}]`.
 
-  `layer=all` takes the union of the per-layer top-k. Peer links connect each node to its top-k2 most similar other nodes by full-row cosine.
+  `layer=all` takes the union of the top-k of each layer. Peer links connect each node to the top-k2 other nodes that are most similar to it, by the cosine of the full row.
 
 ## Suggested wiring in `app.js`
 
-Create each chart once, then call `.update()` on later loads. `api` and `q` are the existing helpers in app.js.
+Create each chart one time. Then call `.update()` when you load new data. `api` and `q` are the existing helpers in app.js.
 
 ```js
 import * as viz from './viz/index.js';
@@ -80,5 +80,9 @@ Call `destroy()` on every chart when the run changes.
 
 ## Demo and test harness
 
-* Open `/static/viz-gallery.html`, which renders every chart from live data for `runs/ple-small`.
-* `python explorer/viz_gallery_check.py --url http://127.0.0.1:8773` uses Playwright with Edge. It hovers the charts, drags a force-graph node, checks for console and HTTP errors, and writes `explorer/screenshots/viz-*.png`.
+* Open `/static/viz-gallery.html`. This page shows all charts with live data for `runs/ple-small`.
+* `python explorer/viz_gallery_check.py --url http://127.0.0.1:8773` uses Playwright with Edge. The script does these steps:
+  1. It moves the pointer over the charts.
+  2. It drags a node of the force graph.
+  3. It looks for console errors and HTTP errors.
+  4. It writes `explorer/screenshots/viz-*.png`.

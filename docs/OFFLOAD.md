@@ -1,14 +1,20 @@
 # PLE offload engine (`ple_lab/offload/`)
 
-Per-Layer Embeddings (PLE, Gemma 3n) add a table `E_ple ∈ R^{V × L·p}` that every layer reads one slice of.
-Unlike every other weight, the rows needed are known **before** the forward pass: they depend only on the
-token ids. So the table never has to sit in accelerator memory; only `L·p` numbers per token have to arrive
-in time. This package demonstrates and measures that: the table lives in GPU memory (baseline), CPU RAM, or a
-memory-mapped file (standing in for phone flash), optionally behind a small GPU row cache and/or a prefetcher.
+Per-Layer Embeddings (PLE, Gemma 3n) add a table `E_ple ∈ R^{V × L·p}`. Each layer reads one slice of this table.
+For all other weights, the model does not know the necessary data before the forward pass. For this table, the
+model knows the necessary rows **before** the forward pass, because the rows depend only on the token ids.
+Thus, the table does not have to stay in accelerator memory. Only `L·p` numbers for each token must arrive in time.
+
+This package shows and measures this. The table can be in one of these locations:
+- GPU memory (the baseline);
+- CPU RAM;
+- a memory-mapped file (this file has the function of phone flash).
+
+Optionally, a small GPU cache of rows and/or a prefetcher can be in front of the table.
 
 ## Plug-in point
 
-`docs/CONTRACT.md`: any `nn.Module` assigned to `model.ple_table` with
+`docs/CONTRACT.md`: you can assign any `nn.Module` to `model.ple_table` if it has
 `forward(ids: LongTensor[B,T]) -> Tensor[B,T,L*p]` (raw unscaled rows, on `ids.device`).
 
 ```python
@@ -23,13 +29,13 @@ print(src.stats())   # hits, misses, evictions, backing/H2D bytes, resident VRAM
 ```
 
 `make_source(run_dir, kind, device, *, capacity=None, capacity_frac=None, backing="mmap-f16", freq=None,
-prefetch=False, prefetch_depth=2, verify=True, out_dtype=torch.float16)`, kinds:
+prefetch=False, prefetch_depth=2, verify=True, out_dtype=torch.float16)`. The kinds are:
 `gpu, cpu, cpu-pinned, mmap-f16, mmap-i8, cached-lru, cached-lfu, static-topk`.
-Source tensors are plain attributes, not registered buffers, so `model.to()`/`state_dict()` ignore them.
+The source tensors are plain attributes, not registered buffers. Thus, `model.to()`/`state_dict()` ignore them.
 
 ## Design
 
-All off-GPU sources share one pipeline (`TableSource.forward`):
+All sources that are not on the GPU use the same pipeline (`TableSource.forward`):
 
 ```
 ids ──► CPU ──► torch.unique(sorted, inverse, counts) ──► fetch(unique ids) ──► rows [n, L·p] on device
@@ -37,42 +43,47 @@ ids ──► CPU ──► torch.unique(sorted, inverse, counts) ──► fetc
                                     └── inverse (int32) ──H2D──► rows.index_select(inverse) ──► [B,T,L·p]
 ```
 
-Each distinct row is read from the backing store and copied host→device **at most once per call**
-(prefill of 256 TinyStories tokens has ≈ 120 distinct ids; a B=16 batch ≈ 1000 of 4096).
+For each call, the pipeline reads each distinct row from the backing store and copies it host→device **one time
+or less**. A prefill of 256 TinyStories tokens has ≈ 120 distinct ids. A B=16 batch has ≈ 1000 distinct ids of 4096.
 
 | source | where the table lives | per call |
 |---|---|---|
 | `GPUTableSource` | whole fp16 table in VRAM | `F.embedding` (baseline) |
-| `CPUTableSource(pinned)` | fp16 tensor in CPU RAM | `index_select` of unique rows into a staging buffer (pinned → truly async `non_blocking` H2D; pageable → driver bounce copy), H2D of just those rows |
-| `MmapTableSource("f16"\|"i8")` | `np.memmap` of `ple_table.*.bin` | `np.take` of the sorted unique rows (lazy page faults); i8 also reads the fp32 per-row scale, ships int8+scale (≈½ the bytes) and dequantises on the device: `row = q·scale` |
-| `CachedTableSource(backing, capacity_rows, policy)` | fixed `[capacity, L·p]` GPU buffer + CPU slot map (`slot_of[V]`, `id_of[C]`) in front of any backing source | hits gathered from the buffer, misses fetched from the backing in one batch, then admitted |
-| `Prefetcher(source)` | wraps any source | background thread (+ dedicated CUDA copy stream) fetches rows for ids queued with `prefetch(ids)`; `forward` consumes the oldest prefetch |
+| `CPUTableSource(pinned)` | fp16 tensor in CPU RAM | `index_select` of unique rows into a staging buffer (pinned → truly async `non_blocking` H2D; pageable → driver bounce copy), then H2D of only those rows |
+| `MmapTableSource("f16"\|"i8")` | `np.memmap` of `ple_table.*.bin` | `np.take` of the sorted unique rows (lazy page faults). i8 also reads the fp32 scale of each row, sends int8+scale (≈½ the bytes) and dequantises on the device: `row = q·scale` |
+| `CachedTableSource(backing, capacity_rows, policy)` | fixed `[capacity, L·p]` GPU buffer + CPU slot map (`slot_of[V]`, `id_of[C]`) in front of a backing source | gathers hits from the buffer, fetches misses from the backing in one batch, then admits them |
+| `Prefetcher(source)` | wraps a source | a background thread (+ a dedicated CUDA copy stream) fetches rows for ids that `prefetch(ids)` puts in the queue; `forward` uses the oldest prefetch |
 
-**Cache policies.** `lru` evicts least-recently-used slots. `lfu` keeps whole-history counts and only admits a
-miss if it has been seen more often than the victim (TinyLFU-style admission so one-off ids cannot flush hot
-rows). `static-topk` preloads the `capacity` most frequent ids from a frequency array (the bench uses
-`train.bin` counts, never the val stream it measures on) and never evicts. Correctness invariants (all tested):
-rows used by the current call are never evicted by that call, and misses are returned from the freshly fetched
-rows, so a cache smaller than the unique ids of a single batch is still exact; duplicates inside a batch are one
-lookup; `hit_rate` is token-weighted (a duplicate of a hit counts as a hit).
+**Cache policies.**
+- `lru` evicts the slots that were least recently used.
+- `lfu` keeps counts for the full history. It admits a miss only if the id occurred more frequently than the victim. This is admission in the style of TinyLFU: ids that occur one time cannot remove hot rows.
+- `static-topk` loads the `capacity` most frequent ids from a frequency array before the start, and it never evicts. The bench uses the counts of `train.bin`, never the val stream that it measures.
 
-**Prefetcher limits** (deliberately simple): strictly FIFO; with `verify=True` the ids of each forward are
-compared to the prefetched ones (one D2H copy) and on mismatch everything pending is drained and the call falls
-back to a synchronous fetch, so it is always correct. One worker thread; Python work is GIL-serialised, so only
-the numpy/torch copy kernels and the async H2D overlap. It cannot help autoregressive decode (the next token is
-unknown until sampled) and only pays off when GPU compute per step exceeds the fetch time. On CUDA the copy
-stream waits on an event recorded at `prefetch()` time, so it never overwrites cache slots still being read.
+**Correctness invariants** (the tests examine all of them):
+- A call never evicts rows that the same call uses.
+- The cache returns misses from the rows that it fetched in the same call. Thus, a cache that is smaller than the unique ids of a single batch is still exact.
+- Duplicates in a batch are one lookup.
+- `hit_rate` is weighted by tokens (a duplicate of a hit counts as a hit).
 
-**Byte accounting** (`stats()`): `backing_bytes` (row payload read from RAM/mmap, + int8 scales),
-`backing_page_bytes` (mmap: distinct 4 KiB pages touched — what a cold flash read actually costs),
-`h2d_bytes` (row payload host→device), `h2d_index_bytes` (inverse map/slot indices), `resident_vram_bytes`
-(table or cache buffer kept on the GPU), plus `tokens`, `unique_rows`, `hit_tokens`, `hit_unique`,
-`miss_unique`, `inserts`, `evictions`, `hit_rate`.
+**Prefetcher limits** (the design is intentionally simple):
+- The prefetcher is strictly FIFO.
+- With `verify=True`, each forward compares its ids to the prefetched ids (one D2H copy). If they are different, the prefetcher removes all pending work, and the call does a synchronous fetch. Thus, the result is always correct.
+- There is one worker thread. The GIL lets only one thread do Python work at a time. Thus, only the numpy/torch copy kernels and the async H2D can occur at the same time as other work.
+- The prefetcher cannot help autoregressive decode, because the next token is not known before sampling. It helps only when the GPU compute for each step takes more time than the fetch.
+- On CUDA, the copy stream waits on an event that `prefetch()` records. Thus, the copy stream never writes over cache slots that a read still uses.
+
+**Byte accounting** (`stats()`):
+- `backing_bytes`: the row payload that the source reads from RAM/mmap, + int8 scales;
+- `backing_page_bytes`: for mmap, the distinct 4 KiB pages that the source reads. This value shows the real cost of a cold read from flash;
+- `h2d_bytes`: the row payload host→device;
+- `h2d_index_bytes`: the inverse map/slot indices;
+- `resident_vram_bytes`: the table or cache buffer that stays on the GPU;
+- also `tokens`, `unique_rows`, `hit_tokens`, `hit_unique`, `miss_unique`, `inserts`, `evictions`, `hit_rate`.
 
 ## Cost model
 
-Per token, PLE needs one row: `L·p·bytes_per_elem` (fp16: `2·L·p`; int8: `L·p + 4` for the scale).
-A dense decoder reads *all* dense weights per decode step (`2·N_dense` bytes in fp16, amortised over the batch).
+For each token, PLE needs one row: `L·p·bytes_per_elem` (fp16: `2·L·p`; int8: `L·p + 4` for the scale).
+A dense decoder reads *all* dense weights for each decode step (`2·N_dense` bytes in fp16, divided over the batch).
 
 | model | L·p | PLE bytes/token f16 / i8 | table size f16 | dense params | dense bytes per decode step (f16) | ratio |
 |---|---|---|---|---|---|---|
@@ -80,10 +91,10 @@ A dense decoder reads *all* dense weights per decode step (`2·N_dense` bytes in
 | synthetic-big (L=12, p=256) | 3072 | 6144 / 3076 | 309 MB | 24.7 M | 49.5 MB | ≈ 8 000× |
 | Gemma 3n E2B-like (262144 × 8960) | 8960 | 17.9 KB / 9.0 KB | 4.7 GB | – | – | – |
 
-So the table can be large (here 6× the dense weights for synthetic-big) while the per-token traffic is tiny:
-even with zero caching, 6 KB/token at 1 000 tok/s is 6 MB/s — far under PCIe (≈ 12–25 GB/s) or UFS flash
-(≈ 1–4 GB/s sequential; random 4 KiB reads are the real limiter, hence `backing_page_bytes`). And because token
-frequencies are Zipfian, a small cache absorbs most of it.
+Thus, the table can be large (for synthetic-big, 6× the dense weights), but the traffic for each token is small.
+Without a cache, 6 KB/token at 1 000 tok/s is 6 MB/s. This is much less than PCIe (≈ 12–25 GB/s) or UFS flash
+(≈ 1–4 GB/s sequential). For flash, the real limit is random 4 KiB reads. For this reason, the stats include `backing_page_bytes`.
+Also, the token frequencies are Zipfian. Thus, a small cache serves most of the traffic.
 
 ## Benchmark
 
@@ -93,31 +104,35 @@ python -m ple_lab.offload.bench --synthetic --device cuda            # builds ru
 python -m ple_lab.offload.bench --gemma3n-table --device cuda        # opt-in, 4.7 GB file; checks disk/RAM first
 ```
 
-`--device` defaults to `cpu` (or `$PLE_DEVICE`) so that development never touches a GPU that a training job
-is using; with `--device cpu` CUDA is hidden before anything can initialise it.
+The default of `--device` is `cpu` (or `$PLE_DEVICE`). Thus, development never uses a GPU that a training job
+uses. With `--device cpu`, the bench hides CUDA before a component can initialise it.
 
-Workloads (ids from `data/tinystories/val.bin`, bf16 autocast on CUDA, warmup then `cuda.synchronize` around
-every timed iteration):
+Workloads (ids from `data/tinystories/val.bin`, bf16 autocast on CUDA, warmup, then `cuda.synchronize` around
+each timed iteration):
 
-* `prefill` – full model, B=1, T=256 (60 iters).
-* `decode` – full model, 256 steps on a **sliding window** of the last 128 tokens of a contiguous stream, one new
-  token per step (this GPT has no KV cache, so each step re-runs the window; tok/s counts new tokens).
-* `decode-1` – **table-only**, the same 256-step stream, 1 id per step: exactly the lookup a KV-cached decoder
-  makes per token. This isolates the PLE fetch latency.
-* `batched` – full model, B=16, T=256 (20 iters).
+* `prefill`: full model, B=1, T=256 (60 iters).
+* `decode`: full model, 256 steps on a **sliding window** of the last 128 tokens of a contiguous stream, with one new
+  token for each step. This GPT has no KV cache, thus each step runs the full window again. tok/s counts only new tokens.
+* `decode-1`: **table only**, the same 256-step stream, 1 id for each step. This is the same lookup that a decoder
+  with a KV cache makes for each token. This workload isolates the latency of the PLE fetch.
+* `batched`: full model, B=16, T=256 (20 iters).
 
-Sources: `gpu, cpu, cpu-pinned, mmap-f16, mmap-i8`, LRU caches at 1/5/20 % of the vocab and static top-k at 5 %
-(cache backing = `mmap-f16`), and `+pf` (prefetch on) for prefill/batched. Output: markdown table on stdout and
-`results/offload/<run>-<timestamp>.json` (all raw stats included).
+Sources:
+- `gpu, cpu, cpu-pinned, mmap-f16, mmap-i8`;
+- LRU caches at 1/5/20 % of the vocab, and static top-k at 5 % (cache backing = `mmap-f16`);
+- `+pf` (prefetch on) for prefill/batched.
 
-Column meaning: `table VRAM` = resident table/cache bytes; `peak alloc` = `torch.cuda.max_memory_allocated`
-during the measured loop (includes dense weights + activations); `H2D B/tok` and `backing B/tok` are per
-looked-up row position (for `decode` that is 128 positions per new token).
+Output: a markdown table on stdout and `results/offload/<run>-<timestamp>.json` (with all raw stats).
+
+Column meaning:
+- `table VRAM`: the bytes of the table/cache that stay on the GPU;
+- `peak alloc`: `torch.cuda.max_memory_allocated` during the measured loop (with dense weights + activations);
+- `H2D B/tok` and `backing B/tok`: the bytes for each row position that the source looks up. For `decode`, there are 128 positions for each new token.
 
 ## Results (RTX 4050 Laptop 6 GB, Windows/WDDM, torch 2.11, bf16 autocast, 2026-11-12)
 
 Raw JSON: `results/offload/ple-small-20261112-192148.json` and `results/offload/synthetic-big-20261112-192517.json`.
-Cache backing is `mmap-f16` (warm OS page cache). `vs gpu` = throughput change relative to the all-in-VRAM table.
+The cache backing is `mmap-f16` (warm OS page cache). `vs gpu` is the change of throughput, relative to the table that is fully in VRAM.
 
 ### runs/ple-small (trained, L=6, p=64, d=384; table 19.3 M params = 36.8 MiB fp16)
 
@@ -164,8 +179,8 @@ Cache backing is `mmap-f16` (warm OS page cache). `vs gpu` = throughput change r
 | batched | mmap-f16+pf | 120,139 | -7% | 34.334 | 37.916 | 0.00 | 605.2 | - | 160 | 160 |
 | batched | lru-5%+pf | 116,188 | -10% | 34.860 | 37.285 | 1.84 | 607.9 | 94.8% | 27 | 27 |
 
-**Quality** (50 batches × 16 × 256 tokens of val.bin, fp32, identical windows): val loss with the gpu-fp16
-table **2.0153**, with the mmap-int8 table **2.0154** (Δ = +0.00002). Int8 offloading costs nothing measurable.
+**Quality** (50 batches × 16 × 256 tokens of val.bin, fp32, identical windows): the val loss with the gpu-fp16
+table is **2.0153**. With the mmap-int8 table, it is **2.0154** (Δ = +0.00002). The int8 offload has no cost that we can measure.
 
 ### runs/synthetic-big (random init, L=12, p=256, d=256; table 154.5 M params = 294.8 MiB fp16)
 
@@ -212,63 +227,62 @@ table **2.0153**, with the mmap-int8 table **2.0154** (Δ = +0.00002). Int8 offl
 | batched | mmap-f16+pf | 53,390 | -29% | 76.884 | 80.726 | 0.00 | 611.8 | - | 1,278 | 1,278 |
 | batched | lru-5%+pf | 49,077 | -35% | 83.609 | 86.039 | 14.74 | 626.5 | 94.8% | 212 | 212 |
 
-A repeat of a subset two minutes later (`--workloads decode,batched`) gave — batched: gpu 161,618 tok/s,
-cpu −23 %, mmap-f16 −27 %, lru-5 % −14 %, topk-5 % −9 %; decode: gpu 40 tok/s, cpu −80 %, lru-5 % −45 %,
-topk-5 % +12 %. The gpu baseline itself moved from 75 k to 162 k tok/s between runs, so run-to-run variation
-of ±30–50 % on the full-model rows is normal on this shared laptop GPU (see caveats): **only large effects in
-the full-model rows are meaningful**; the byte, hit-rate and memory columns are deterministic.
+Two minutes later, we ran a subset again (`--workloads decode,batched`). The results were:
+- batched: gpu 161,618 tok/s, cpu −23 %, mmap-f16 −27 %, lru-5 % −14 %, topk-5 % −9 %;
+- decode: gpu 40 tok/s, cpu −80 %, lru-5 % −45 %, topk-5 % +12 %.
+
+The gpu baseline itself changed from 75 k to 162 k tok/s between the runs. Thus, on this shared laptop GPU, a
+variation of ±30–50 % between runs is normal for the rows of the full model (see Caveats). **Only large effects in
+the rows of the full model are meaningful.** The columns for bytes, hit rate and memory are deterministic.
 
 ## Interpretation
 
-* **VRAM.** ple-small: the PLE table goes from 36.8 MiB to 0 (cpu/mmap) or 1.84 MiB (5 % cache, 88–96 % hit rate)
-  at a −7…−15 % prefill/batched throughput change. synthetic-big: **294.8 MiB → 14.7 MiB with a 5 % cache**
-  (static top-k 95.5–96.5 % hit rate; LRU 88–95 % on prefill/batched); peak allocated memory falls 474 → 194 MiB
-  (prefill) and 901 → 621 MiB (batched) — the table was ~60 % of prefill VRAM. The throughput cost of the 5 %
-  caches is in the 0–20 % range (−9 %/−14 % for batched in the repeat run).
-* **Zipf makes small caches work.** A 1 % LRU cache (503 rows) already serves 77 % of prefill/batched tokens; a
-  5 % static top-k (frequencies from train.bin, never the val stream) serves ~96 % on every workload. Going from
-  LRU 5 % to 20 % barely helps (87.9 → 87.9 %, 94.8 → 95.8 %): the remaining misses are the long tail. In the
-  sliding-window decode, 127 of 128 rows repeat each step, so every cache hits 99.6 %.
-* **Bytes moved are tiny.** Uncached, a row is 768 B (ple-small) / 6 KB (synthetic-big) per token; per-call
-  de-duplication halves that for a 256-token prefill and cuts it ~5× for B=16. A 5 % cache brings it to 27–63 B
-  and 158–504 B per token, versus 61 MB / 49.5 MB of dense weights read per decode step: 4–5 orders of
-  magnitude less.
-* **int8** halves backing and H2D bytes (388 vs 768 B/token) at no quality cost, but on this GPU the extra
-  dequant kernels make it slightly slower; it wins where bandwidth (flash), not kernel launches, is the limit.
-* **Latency, not bandwidth, is the cost.** `decode-1` (table only, one id per step) exposes the fixed per-call
-  overhead of an off-GPU lookup: 0.3–1.5 ms (CPU unique, numpy gather, one or two tiny H2D copies, scatter) vs
-  0.1–0.3 ms for an on-GPU embedding. A cache does not help there: a hit still pays the CPU slot lookup and an
-  index H2D, and Python/launch overhead dominates. In a real decoder this ~1 ms is either hidden behind the
-  20–50 ms model step (the `decode` rows are within noise of gpu) or overlapped by fetching the row right after
-  sampling while early layers run; a C++/CUDA-graph implementation would shrink it further.
-* **Pinned vs pageable**: for these ≤ 1 MB transfers pinned staging buys nothing measurable (a per-call pinned
-  allocation even costs a little); it matters for bulk preloads and larger batches.
-* **Prefetch** was roughly neutral for ple-small and *hurt* synthetic-big batched (−29 %/−35 %): the worker thread
-  competes for the GIL with the thread launching the model's kernels, and the de-duplicated fetch (~1 ms) is
-  already small relative to compute. It is kept as a correct, tested building block; the honest conclusion is
-  that for models this size, synchronous de-duplicated fetches are good enough.
+* **VRAM.**
+  - ple-small: the PLE table goes from 36.8 MiB to 0 (cpu/mmap) or to 1.84 MiB (5 % cache, hit rate of 88–96 %). The change of the prefill/batched throughput is −7…−15 %.
+  - synthetic-big: the table goes from **294.8 MiB to 14.7 MiB with a 5 % cache**. The hit rate is 95.5–96.5 % for static top-k, and 88–95 % for LRU on prefill/batched.
+  - The peak allocated memory decreases from 474 to 194 MiB (prefill) and from 901 to 621 MiB (batched). The table was ~60 % of the prefill VRAM.
+  - The cost of the 5 % caches to throughput is in the range of 0–20 % (−9 %/−14 % for batched in the second run).
+* **Zipf lets small caches work.**
+  - A 1 % LRU cache (503 rows) serves 77 % of the prefill/batched tokens.
+  - A 5 % static top-k cache serves ~96 % on all workloads. Its frequencies come from train.bin, never from the val stream.
+  - An increase of the LRU cache from 5 % to 20 % helps almost nothing (87.9 → 87.9 %, 94.8 → 95.8 %). The remaining misses are the long tail.
+  - In the sliding-window decode, 127 of 128 rows occur again in each step. Thus, all caches have a hit rate of 99.6 %.
+* **The system moves few bytes.**
+  - Without a cache, a row is 768 B (ple-small) or 6 KB (synthetic-big) for each token.
+  - De-duplication in each call decreases this by half for a 256-token prefill, and by ~5× for B=16.
+  - A 5 % cache decreases it to 27–63 B and 158–504 B for each token.
+  - A decode step reads 61 MB / 49.5 MB of dense weights. Thus, the PLE traffic is 4–5 orders of magnitude less.
+* **int8** decreases the backing bytes and the H2D bytes by half (388 vs 768 B/token), with no cost to quality. But on this GPU, the dequant kernels make it a little slower. int8 is better when the limit is bandwidth (flash), not kernel launches.
+* **The cost is latency, not bandwidth.**
+  - `decode-1` (table only, one id for each step) shows the fixed overhead of a lookup that is not on the GPU. This overhead is 0.3–1.5 ms (CPU unique, numpy gather, one or two small H2D copies, scatter). An embedding on the GPU takes 0.1–0.3 ms.
+  - A cache does not help there. A hit also needs the CPU slot lookup and an index H2D, and the overhead of Python and of launches is the largest part.
+  - In a real decoder, the 20–50 ms model step can hide this ~1 ms (the `decode` rows are in the noise range of gpu). Or, the decoder can fetch the row immediately after sampling, while the first layers run.
+  - An implementation in C++ or with CUDA graphs can decrease this overhead more.
+* **Pinned vs pageable:** for these transfers of 1 MB or less, pinned staging gives no measurable benefit. A pinned allocation in each call even costs a little. Pinned memory is important for bulk preloads and larger batches.
+* **Prefetch** had almost no effect for ple-small. It made synthetic-big batched *slower* (−29 %/−35 %).
+  - The worker thread competes for the GIL with the thread that launches the kernels of the model.
+  - The de-duplicated fetch (~1 ms) is already small, relative to the compute.
+  - We keep the prefetcher as a correct, tested component. Our conclusion: for models of this size, synchronous de-duplicated fetches are sufficient.
 
 ## Caveats
 
-* **Windows/WDDM**: kernel launches and H2D copies go through the WDDM scheduler, adding jitter and per-copy
-  latency vs Linux/TCC (p95 is 1.1–3× p50). Other GPU clients on this laptop (desktop apps, a local LLM server)
-  cause the large run-to-run swings noted above.
-* **Page-cache warmth**: after first touch the 37 / 309 MB table files sit in the OS page cache (16 GB RAM), so
-  `mmap-f16` ≈ `cpu`. Cold reads from real flash would cost per *page*: `backing_page_bytes` in the JSON is the
-  number to feed into a flash model.
-* `decode` has no KV cache, so its absolute tok/s is low and dominated by the 128-token forward; `decode-1`
-  isolates the lookup. Both count new tokens only.
-* synthetic-big is random-init: timings are representative, quality is not (quality measured on ple-small).
-* The opt-in `--gemma3n-table` run (262144 × 8960, writes a 4.7 GB file) was not executed.
+* **Windows/WDDM:** kernel launches and H2D copies go through the WDDM scheduler. This adds jitter and latency to each copy, compared to Linux/TCC (p95 is 1.1–3× p50). Other GPU clients on this laptop (desktop apps, a local LLM server) cause the large changes between runs that this document shows above.
+* **Warm page cache:** after the first read, the table files (37 / 309 MB) stay in the OS page cache (16 GB RAM). Thus, `mmap-f16` ≈ `cpu`. Cold reads from real flash cost for each *page*. Use the value `backing_page_bytes` in the JSON as the input for a flash model.
+* `decode` has no KV cache. Thus, its absolute tok/s is low, and the 128-token forward takes most of the time. `decode-1` isolates the lookup. Both workloads count only new tokens.
+* synthetic-big has random initial weights. Its timings are representative, but its quality is not. We measured the quality on ple-small.
+* We did not run the optional `--gemma3n-table` benchmark (262144 × 8960, writes a 4.7 GB file).
 
 
 ## Tests
 
-`tests/test_offload.py` (tiny GPT saved to `tmp_path`): logits of every source/policy (incl. int8-backed
-cache and prefetch) match the in-memory model over several calls (fp16 `atol=1e-2`; int8 `atol=5e-2`:
-per-row symmetric quantisation error ≤ max|row|/254 per element, amplified by `sqrt(p)` and the network);
-exact row equality for cpu/mmap; i8 rows within half a quantisation step; LRU hit/miss/eviction/byte
-accounting by hand; cache capacity (3) far smaller than the ~35 unique ids of one batch for all three policies,
-plus slot-map consistency; LFU admission keeps hot rows; Zipf stream → >50 % hit rate with a 10 % cache;
-prefetch mismatch fallback; `attach` validation. CUDA cases are parametrised but opt-in
-(`PLE_TEST_CUDA=1`), so `python -m pytest -q tests` never touches the GPU.
+`tests/test_offload.py` saves a tiny GPT to `tmp_path` and examines these items:
+- The logits of each source/policy (also an int8-backed cache and prefetch) are the same as the logits of the in-memory model, over several calls. The tolerance is fp16 `atol=1e-2` and int8 `atol=5e-2`. The error of per-row symmetric quantisation is ≤ max|row|/254 for each element, and `sqrt(p)` and the network make it larger.
+- The rows for cpu/mmap are exactly equal. The i8 rows are in half of a quantisation step.
+- The LRU hit/miss/eviction/byte accounting agrees with a manual calculation.
+- For all three policies, the tests use a cache capacity (3) that is much smaller than the ~35 unique ids of one batch. The results are correct, and the slot map stays consistent.
+- LFU admission keeps hot rows.
+- A Zipf stream gives a hit rate of >50 % with a 10 % cache.
+- The prefetcher uses the fallback when the ids are different.
+- `attach` validates its input.
+
+The CUDA cases are parametrised but optional (`PLE_TEST_CUDA=1`). Thus, `python -m pytest -q tests` never uses the GPU.

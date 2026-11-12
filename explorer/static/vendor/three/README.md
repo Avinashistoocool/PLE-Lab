@@ -1,7 +1,6 @@
 # Vendored three.js
 
-Used by `explorer/static/map3d.js` (the 3D token map). Vendored so the explorer works fully offline
-and without a build step.
+The 3D token map (`explorer/static/map3d.js`) uses this copy of three.js. The copy is in the repository, thus the explorer works fully offline and without a build step.
 
 | file(s) | source | version |
 |---|---|---|
@@ -11,9 +10,7 @@ and without a build step.
 | `addons/shaders/{CopyShader,LuminosityHighPassShader,OutputShader}.js` | `three/examples/jsm/shaders/` | r170 |
 | `addons/renderers/CSS2DRenderer.js` | `three/examples/jsm/renderers/` | r170 |
 
-**Local modification:** the addons originally import from the bare specifier `'three'`. They were
-rewritten to relative paths (`'../../three.module.js'`) so they load in the browser without an import
-map. No other changes.
+**Local modification:** the original addons import from the bare specifier `'three'`. We changed these imports to relative paths (`'../../three.module.js'`). Thus, the browser can load them without an import map. We made no other changes.
 
 ## Licence
 

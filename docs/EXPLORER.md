@@ -1,7 +1,7 @@
 # PLE Explorer
 
-An interactive web app for looking inside the Per-Layer Embedding (PLE) table and the PLE path of a
-trained run. See `docs/CONTRACT.md` for the model/run format.
+The PLE Explorer is an interactive web app. It shows the contents of the Per-Layer Embedding (PLE) table and
+the PLE path of a trained run. For the model format and the run format, see `docs/CONTRACT.md`.
 
 ## Running it
 
@@ -14,69 +14,76 @@ Options:
 
 | flag | default | meaning |
 |---|---|---|
-| `--runs` | `runs` | directory containing run directories (`runs/<name>/config.json`, ...) |
-| `--port` / `--host` | `8765` / `127.0.0.1` | where to serve |
-| `--device` | `cpu` | `cpu` or `cuda`. Keep `cpu` while a training job is using the GPU. |
-| `--data` | `<repo>/data/tinystories/train.bin` | uint16 GPT-2 token file used for token frequencies |
+| `--runs` | `runs` | the directory that contains the run directories (`runs/<name>/config.json`, ...) |
+| `--port` / `--host` | `8765` / `127.0.0.1` | the address of the server |
+| `--device` | `cpu` | `cpu` or `cuda`. Keep `cpu` while a training job uses the GPU. |
+| `--data` | `<repo>/data/tinystories/train.bin` | the uint16 GPT-2 token file for the token frequencies |
 
-* Runs are discovered on every request and loaded lazily. A run is reloaded when `config.json`,
-  `dense.pt` or `ple_table.f16.bin` changes (mtime), so a run that the trainer rewrites is picked up
-  automatically. A run that is still half-written gives a 400 error instead of crashing the server.
-* Token frequencies are counted once from `--data` (about 72M tokens, a few seconds) and cached in
-  `<runs>/.explorer_cache/freq_<path-hash>_<size>_<mtime_ns>.npy`. If the data file changes (size or
-  mtime), the cache key changes, counts are recomputed and the stale cache file is deleted. Without the
-  file, the app still works: frequency-dependent views fall back to token-id order and say so.
-* No trained run yet? `python -m explorer.make_demo_run` writes `runs/demo-random` (random init).
-* UI smoke test and screenshots (server must be running, uses the installed Edge through Playwright):
+* The server finds the runs again on each request, and it loads a run only when necessary. The server loads a run
+  again when `config.json`, `dense.pt` or `ple_table.f16.bin` changes (mtime). Thus, the server automatically
+  uses a run that the trainer writes again. If a run is only half written, the server gives a 400 error and does not crash.
+* The server counts the token frequencies one time from `--data` (about 72M tokens, a few seconds). It keeps the
+  counts in `<runs>/.explorer_cache/freq_<path-hash>_<size>_<mtime_ns>.npy`. If the data file changes (size or
+  mtime), the cache key changes. Then the server counts again and deletes the old cache file. If the data file
+  is not available, the app continues to work. The views that need frequencies then use the token-id order, and they show this.
+* If you do not have a trained run, `python -m explorer.make_demo_run` writes `runs/demo-random` (random initial weights).
+* UI smoke test and screenshots: the server must run. The test uses the installed Edge through Playwright.
   `python -m explorer.screenshot_tour --url http://127.0.0.1:8765 --out explorer/screenshots`
 * Findings: `python -m explorer.findings --run runs/ple-small --baseline runs/baseline-small`
   writes `results/explorer_findings.json` (see [Findings](#findings)).
 
-Baseline runs (`ple_dim=0`) appear in the run picker with "(baseline)"; every PLE view then shows a
-warning and the API returns HTTP 400 for them. They are used in the Compare tab.
+Baseline runs (`ple_dim=0`) show "(baseline)" in the run picker. For these runs, each PLE view shows a
+warning, and the API returns HTTP 400. The Compare tab uses the baseline runs.
 
 ## Conventions
 
-* **Token part / slice**: the raw table row `E[t]` reshaped to `[L, p]` and multiplied by `√p`, i.e.
-  exactly the token term that goes into `u_l = (E[t]_l·√p·mask_l + RMSNorm(W_ctx·x₀·d^-½)_l)/√2`.
-  At initialisation (`std 0.02`) a slice has norm ≈ `0.02·p` and a full row ≈ `0.02·p·√L`.
-* **Gate**: `mean |gelu(W_gate·h)|` where `h` is the residual stream of block `l` *after* its attention
-  and MLP sublayers (the input of the PLE injection), not the block input.
-* **Contribution ratio**: `‖RMSNorm(W_proj(gate ⊙ u_l))‖ / ‖h‖`, the size of the PLE update relative to the
-  residual stream it is added to. Because of the final RMSNorm its numerator is roughly constant
-  (≈ `√d` times the norm weight), so the ratio mostly falls as `‖h‖` grows with depth.
-* **Loss** at position `i` is `−log p(token_i | tokens_<i)`; position 0 has no loss. Top-5 at position `i`
+* **Token part / slice**: the raw table row `E[t]`, with the shape changed to `[L, p]` and multiplied by `√p`. This is
+  exactly the token term in `u_l = (E[t]_l·√p·mask_l + RMSNorm(W_ctx·x₀·d^-½)_l)/√2`.
+  At initialisation (`std 0.02`), a slice has a norm of ≈ `0.02·p`, and a full row has a norm of ≈ `0.02·p·√L`.
+* **Gate**: `mean |gelu(W_gate·h)|`. Here, `h` is the residual stream of block `l` *after* its attention
+  and MLP sublayers (the input of the PLE injection). It is not the input of the block.
+* **Contribution ratio**: `‖RMSNorm(W_proj(gate ⊙ u_l))‖ / ‖h‖`. This is the size of the PLE update, relative to the
+  residual stream that receives it. Because of the final RMSNorm, the numerator is almost constant
+  (≈ `√d` times the norm weight). Thus, the ratio mostly decreases when `‖h‖` increases with depth.
+* **Loss** at position `i` is `−log p(token_i | tokens_<i)`. Position 0 has no loss. The top-5 at position `i`
   are the guesses for token `i+1`.
-* **Δloss** (ablation) `= ablated loss − normal loss`. Ablation zeroes the token part of the chosen
-  layers (`ple_mask`); the context part `RMSNorm(W_ctx x₀)` stays. Positive = the token got harder to
-  predict without PLE.
-* Text longer than `block_size` tokens is truncated (with a warning banner); empty text is an error.
+* **Δloss** (ablation) `= ablated loss − normal loss`. The ablation sets the token part of the selected
+  layers to zero (`ple_mask`). The context part `RMSNorm(W_ctx x₀)` stays. A positive value means that the token was more
+  difficult to predict without PLE.
+* If a text is longer than `block_size` tokens, the app truncates it and shows a warning banner. An empty text gives an error.
 
 ## UI
 
-The shell uses the "Specimen Ledger" identity: the PLE table presented as a naturalist's catalogue of token specimens.
-- **Ledger** (light, default): archival paper `#f2ebdd` with a printed graph-paper grid and vignette, ink `#1c1a16`,
-  vermilion `#d9381e` for actions/selection/PLE and verdigris `#1f5c57` as the secondary accent. Cards are paper index
-  cards with a catalogue number ("No. 03 · Token"), hairline ink rules and double rules under titles.
+The shell uses the "Specimen Ledger" identity. It shows the PLE table as the catalogue of token specimens of a naturalist.
+- **Ledger** (light, default):
+  - archival paper `#f2ebdd` with a printed graph-paper grid and a vignette;
+  - ink `#1c1a16`;
+  - vermilion `#d9381e` for actions, selection and PLE;
+  - verdigris `#1f5c57` as the secondary accent.
+
+  The cards are paper index cards. Each card has a catalogue number ("No. 03 · Token"), hairline ink rules and double rules under the titles.
 - **Darkroom** (dark): charcoal `#15130f` with film grain, paper text `#e9e1cf`, safelight red `#ff5a36` and brass `#c9a227`.
-- Fonts (local, SIL OFL): **Newsreader** (display, headings, italic KPI numerals), **Atkinson Hyperlegible** (UI text),
-  **Martian Mono** (tokens, ids, axis labels, tables).
-- Colour maps: Ledger uses a paper → verdigris → ink ramp for magnitudes and verdigris ↔ paper ↔ vermilion for signed
-  values; Darkroom uses viridis and brass ↔ charcoal ↔ safelight.
-- Layer colours L0–L5 (botanical-plate pigments, Okabe–Ito-derived, colour-blind-aware): gamboge, cerulean, viridian,
-  ochre, prussian blue, madder rose (`--l0`…`--l5` in `style.css`; deeper pigments in Ledger, brighter in Darkroom).
-- One staggered page-load sequence (masthead rule draws in, title and KPIs rise, cards follow ~60 ms apart); tab switches
-  use a short ink-wipe. All motion is disabled under `prefers-reduced-motion`.
-- The 3D map is always a dark "lightbox" plate, captioned "Plate I".
-- Token strings are in mono, with `·` for a space and `⏎` for a newline.
+- Fonts (local, SIL OFL):
+  - **Newsreader** (display, headings, italic KPI numerals);
+  - **Atkinson Hyperlegible** (UI text);
+  - **Martian Mono** (tokens, ids, axis labels, tables).
+- Colour maps:
+  - Ledger uses a paper → verdigris → ink ramp for magnitudes, and verdigris ↔ paper ↔ vermilion for signed values.
+  - Darkroom uses viridis, and brass ↔ charcoal ↔ safelight.
+- Layer colours L0–L5: gamboge, cerulean, viridian, ochre, prussian blue, madder rose. These are botanical-plate pigments,
+  derived from Okabe–Ito, and they are safe for colour-blind users. They are `--l0`…`--l5` in `style.css`. Ledger uses deeper pigments, and Darkroom uses brighter pigments.
+- The page load has one staggered sequence. The masthead rule draws in, and the title and the KPIs move up.
+  Then the cards follow, ~60 ms apart. Tab switches use a short ink wipe. `prefers-reduced-motion` stops all motion.
+- The 3D map is always a dark "lightbox" plate, with the caption "Plate I".
+- Token strings use a mono font, with `·` for a space and `⏎` for a newline.
 
-It uses no CDNs at runtime.
+The app uses no CDNs at runtime.
 
-* **Themes:** Ledger (light) is the default. Switch to Darkroom with the sun/moon button, `T` or the palette. The choice is stored in `localStorage` (`ple.theme`).
+* **Themes:** Ledger (light) is the default. To change to Darkroom, use the sun/moon button, `T` or the palette. The app keeps the selection in `localStorage` (`ple.theme`).
 * **Hash routes** (back/forward work):
-  - `#token/<query>` (e.g. `#token/%20dog` or `#token/%23262`);
+  - `#token/<query>` (for example `#token/%20dog` or `#token/%23262`);
   - `#map`, `#analyze`, `#stats`, `#compare`, `#about`;
-  - any route can add `?run=<name>`.
+  - you can add `?run=<name>` to all routes.
 * **Shortcuts:**
 
   | key | action |
@@ -89,64 +96,79 @@ It uses no CDNs at runtime.
   | `?` | shortcuts overlay |
   | `Esc` | close |
 
-* **Command palette:** go to a tab, inspect a token (type e.g. `dog`), analyze sample or typed text, ablate all layers, switch the map between 2D and 3D, toggle the theme, or switch run.
+* **Command palette:** with the palette, you can do these tasks:
+  - go to a tab;
+  - examine a token (type, for example, `dog`);
+  - analyze the sample text or your text;
+  - ablate all layers;
+  - change the map between 2D and 3D;
+  - change the theme;
+  - change the run.
 * **Feedback:**
-  - errors and warnings appear as toasts (they replace the old banner);
-  - a top progress bar shows while requests are running;
-  - skeleton shimmer fills panels while loading;
-  - the "?" buttons on each card explain the chart.
-* **Map 2D | 3D:** a segmented toggle. The default is 3D when WebGL is available, and the choice is stored as `ple.mapmode`.
-  - 3D mode lazily loads `/static/map3d.js` (`mountMap3D`).
-  - If that fails, a note appears and the 2D PCA map is shown instead.
-* **Animated backdrop:** disabled under `prefers-reduced-motion` and paused when the tab is hidden.
+  - errors and warnings show as toasts (they replace the old banner);
+  - a progress bar at the top shows while requests run;
+  - a skeleton shimmer fills the panels while they load;
+  - the "?" button on each card gives an explanation of the chart.
+* **Map 2D | 3D:** a segmented toggle. The default is 3D when WebGL is available. The app keeps the selection as `ple.mapmode`.
+  - 3D mode loads `/static/map3d.js` (`mountMap3D`) only when necessary.
+  - If this fails, a note shows, and the app shows the 2D PCA map.
+* **Animated backdrop:** `prefers-reduced-motion` stops it. It also stops when the tab is hidden.
 
 ## Tabs
 
 ### Token
-Type a token (`" the"`, note the leading space for word tokens) or `#id`. Multi-token text uses the
-first token and lists the pieces.
+Type a token (`" the"`; word tokens start with a space) or `#id`. If the text has more than one token, the tab uses the
+first token and shows a list of the pieces.
 
-* **Per-layer row norm**: `‖slice_l‖` per layer, with the init norm as a dashed line. Bars well above
-  it were moved by training; rare tokens stay near it. Click a bar to show neighbours in that layer.
-* **Layer similarity**: cosine between this token's slices of different layers, next to the average
-  matrix over the 1000 most frequent tokens. High off-diagonal values mean the layers store similar
-  information for the token; values near 0 mean every layer gets its own, unrelated vector.
-* **Vectors**: the `L × p` slice heatmap (average-pooled if `p > 128`).
-* **Nearest tokens**: cosine nearest neighbours in one layer slice (or the full row). Click a row to
-  jump to that token. Similar slices mean that layer's PLE path receives the same signal for both.
+* **Per-layer row norm**: `‖slice_l‖` for each layer, with the initial norm as a dashed line. Training moved the bars that are much
+  higher than this line. Rare tokens stay near it. Click a bar to show the neighbours in that layer.
+* **Layer similarity**: the cosine between the slices of this token in different layers, next to the average
+  matrix over the 1000 most frequent tokens. High values off the diagonal mean that the layers keep similar
+  information for the token. Values near 0 mean that each layer gets its own, unrelated vector.
+* **Vectors**: the heatmap of the `L × p` slices (with average pooling if `p > 128`).
+* **Nearest tokens**: the nearest neighbours by cosine in one layer slice (or the full row). Click a row to
+  go to that token. When two slices are similar, the PLE path of that layer receives the same signal for both tokens.
 
 ### Map
-2-D PCA of the slice of one layer (or the full row) for the N most frequent tokens. Colour by
-frequency rank or norm, highlight a token with the search box, click a point to open it. Note that
-two PCs typically explain a small fraction of the variance (shown in the header), so the picture is
-only a rough view of the dominant directions (often frequency/norm).
+A 2-D PCA of the slice of one layer (or the full row) for the N most frequent tokens. You can colour the points by
+frequency rank or by norm. You can highlight a token with the search box. Click a point to open it.
+Usually, two PCs explain only a small part of the variance (the header shows this value). Thus, the picture
+is only an approximate view of the dominant directions (frequently, frequency or norm).
 
 ### 3D map
-An interactive three.js view (`explorer/static/map3d.js`, three.js r170 vendored in
-`explorer/static/vendor/three/`, fully offline). Stand-alone demo:
+An interactive three.js view (`explorer/static/map3d.js`). A copy of three.js r170 is in
+`explorer/static/vendor/three/`, thus the view works fully offline. Standalone demo:
 `http://127.0.0.1:8765/static/map3d-demo.html?run=ple-small`.
 
-**What it shows.** The N most frequent tokens (1000/2000/5000). Layer views use a *shared* 3-D PCA fitted
-on all layers' slices stacked (`[N·L, p]`), so all layers share the same axes and the slider morphs every
-token from its layer-`l` position to its layer-`l+1` position (800 ms, easeInOutCubic; ▶ loops
-0→5→full). The **Full row** view (default) is a separate PCA of the concatenated row. For display, each
-view is centred and scaled to the same RMS radius. Three PCs explain only ~3–4% of the variance per
-slice, so the map shows the dominant directions; the cosine neighbours in the card are exact.
+**What it shows.**
+- The view shows the N most frequent tokens (1000/2000/5000).
+- The layer views use a *shared* 3-D PCA. This PCA is fitted on the slices of all layers together (`[N·L, p]`). Thus, all layers use the same axes.
+- The slider moves each token from its position in layer `l` to its position in layer `l+1` (800 ms, easeInOutCubic).
+  ▶ plays a loop 0→5→full.
+- The **Full row** view (default) is a separate PCA of the concatenated row.
+- For the display, the view centres each view and scales it to the same RMS radius.
+- Three PCs explain only ~3–4% of the variance of each slice. Thus, the map shows the dominant directions. The cosine neighbours in the card are exact.
 
-* **Points**: soft glowing sprites, size ∝ log frequency. Colour by k-means cluster (12 clusters on the
-  unit-normalised full row; the legend lists each cluster's top tokens; click one to isolate it), log
-  frequency, slice/row norm (with the init norm marked), or the layer with the largest slice norm.
-* **Hover**: token (`·` = space), id, frequency rank, count, cluster, norm. **Click**: select. Its path
-  through layers 0…L−1 is drawn as a glowing tube with numbered layer markers, with constellation lines
-  to its 8 cosine neighbours in the current layer. The info card shows the per-layer norms (click a bar to
-  jump to that layer), the clickable neighbour list, and the neighbour overlap between consecutive layers.
-  **Double-click** (or *Open in token view*) calls `onTokenClick(id)`.
-* **Search** (`" dog"`, `dog`, `#3290`, or a substring): the camera flies to the token and it pulses.
-  Tokens outside the top N are placed with the same PCA.
-* Labels for the 40 most frequent tokens (fade with distance), cluster labels in the full-row view,
-  starfield, distance fog, grid/axis gizmo, optional bloom, slow idle auto-rotate (stops on interaction,
-  resumes after 6 s). `Esc` clears. Rendering pauses when hidden (IntersectionObserver +
-  `visibilitychange`); DPR ≤ 2; `prefers-reduced-motion` disables auto-rotate and tweens.
+* **Points**: soft glowing sprites. The size is proportional to the log frequency. You can colour the points by one of these values:
+  - the k-means cluster (12 clusters on the full row, normalised to unit length). The legend shows the top tokens of each cluster. Click a cluster to isolate it;
+  - the log frequency;
+  - the norm of the slice or row (with a mark at the initial norm);
+  - the layer with the largest slice norm.
+* **Hover**: shows the token (`·` = space), the id, the frequency rank, the count, the cluster and the norm.
+* **Click**: selects the token. The view then shows these items:
+  - the path of the token through layers 0…L−1, as a glowing tube with numbered layer markers;
+  - constellation lines to the 8 cosine neighbours of the token in the current layer;
+  - an info card with the norm of each layer, the neighbour list and the neighbour overlap between consecutive layers. You can click a bar to go to that layer, and you can click the neighbours.
+* **Double-click** (or *Open in token view*) calls `onTokenClick(id)`.
+* **Search** (`" dog"`, `dog`, `#3290`, or a substring): the camera moves to the token, and the token pulses.
+  The view uses the same PCA to place tokens that are not in the top N.
+* Other features:
+  - labels for the 40 most frequent tokens (they fade with distance);
+  - cluster labels in the full-row view;
+  - a starfield, distance fog, a grid/axis gizmo and optional bloom;
+  - a slow automatic rotation when idle. It stops when you use the view, and it starts again after 6 s.
+* `Esc` clears the selection. Rendering stops when the view is hidden (IntersectionObserver +
+  `visibilitychange`). DPR ≤ 2. `prefers-reduced-motion` stops the automatic rotation and the tweens.
 
 **Module API.**
 
@@ -161,58 +183,62 @@ const map = await m.mountMap3D(containerEl, {
 await map.setRun(name); map.setLayer(3 /* or 'full' */); map.highlight(' dog'); map.resize(); map.destroy();
 ```
 
-The module injects its own CSS (ref-counted `<style id="m3d-style">`) and builds its overlay UI inside
-the container, which should have a size (it fills it). `destroy()` stops the render loop and removes
-listeners, observers, GPU resources (geometries, materials, textures, render targets, the WebGL context)
-and all DOM it created.
+The module adds its own CSS (a ref-counted `<style id="m3d-style">`). It builds its overlay UI in
+the container. The container must have a size, because the view fills it. `destroy()` stops the render loop. It also removes
+these items:
+- the listeners and observers;
+- the GPU resources (geometries, materials, textures, render targets, the WebGL context);
+- all DOM elements that the module created.
 
 ### Analyze
-Runs the PLE model on your text (traced forward that is checked against the model's own forward in
-the tests).
+This tab runs the PLE model on your text. It uses a traced forward. The tests compare this traced forward with the own forward of the model.
 
-* Token chips coloured by gate magnitude in a chosen layer, by loss, or by Δloss. Hover for per-layer
-  gates and the next-token top-5; click to pin.
-* **PLE contribution** per layer (mean ratio over the text) and **mean gate** per layer.
-* **Ablate PLE** (all layers, or the ticked layers) re-runs with the token part zeroed, shows mean Δloss
-  and the most PLE-dependent tokens. One short text is noisy; use it for intuition, use
+* The token chips have a colour for the gate magnitude in a selected layer, for the loss or for the Δloss. Move the pointer over a chip to see the gates
+  of each layer and the top-5 for the next token. Click a chip to pin it.
+* **PLE contribution** for each layer (the mean ratio over the text) and **mean gate** for each layer.
+* **Ablate PLE** (all layers, or the selected layers) runs the model again with the token part set to zero. It shows the mean Δloss
+  and the tokens that depend most on PLE. One short text has much noise. Use it to get a general idea, and use
   `explorer.findings` for averaged numbers.
 
 ### Stats
-* Histogram (log counts) of slice norms per layer over the whole GPT-2 vocab.
-* Full-row norm vs. training count (log x axis) for 3000 random tokens, with the mean norm per
-  frequency bucket and the init norm. Rows of tokens that never occur in train.bin receive no gradient
-  from the loss; any change there comes from the optimizer (e.g. weight decay).
-* int8 quantisation error per layer of the per-row symmetric int8 table (`‖q·s − w‖/‖w‖`).
-  The scale is set by the row's largest entry, so a layer whose slice is small relative to the rest of
-  the row loses relatively more precision.
+* A histogram (log counts) of the slice norms of each layer, over the full GPT-2 vocab.
+* The full-row norm against the training count (log x axis) for 3000 random tokens. The chart also shows the mean norm for each
+  frequency bucket and the initial norm. The rows of tokens that never occur in train.bin receive no gradient
+  from the loss. If these rows change, the optimizer causes the change (for example, weight decay).
+* The int8 quantisation error for each layer of the int8 table (symmetric, one scale for each row) (`‖q·s − w‖/‖w‖`).
+  The largest entry of the row sets the scale. Thus, a layer with a slice that is small, relative to the remaining part of
+  the row, loses more precision.
 
 ### Compare
-Per-token loss of a baseline run vs. a PLE run on the same text; `diff = baseline − PLE` (red = PLE
-better). Only meaningful when both runs saw the same data and budget; a single text is anecdotal.
+The loss for each token of a baseline run and of a PLE run on the same text. `diff = baseline − PLE` (red = PLE
+is better). This comparison is meaningful only when the two runs used the same data and budget. A single text is only an example.
 
 ### About
-Short explanation of PLE and of the formulas above.
+A short explanation of PLE and of the formulas above.
 
 ## API
 
 `GET /api/runs`, `GET /api/token?run&q|id`, `GET /api/neighbors?run&id&layer&k`,
 `GET /api/layer_similarity?run[&id][&top_n]`, `GET /api/projection?run&layer&n`, `GET /api/stats?run`,
-`GET /api/projection3d?run&n=2000&space=shared|per_layer` (points with per-layer `coords`, `full`,
-`norms`, `cluster`, `max_layer`, plus `clusters` and explained variance; `n` ≤ 5000),
-`GET /api/trajectory?run&id&n&space&k=8` (one token's per-layer and full-row coordinates in the same
-map, its `k` cosine neighbours among the map's tokens per layer, and `neighbor_overlap`),
+`GET /api/projection3d?run&n=2000&space=shared|per_layer` (points with `coords` for each layer, `full`,
+`norms`, `cluster`, `max_layer`, and also `clusters` and the explained variance; `n` ≤ 5000),
+`GET /api/trajectory?run&id&n&space&k=8` (the coordinates of one token for each layer and for the full row in the same
+map, its `k` cosine neighbours among the tokens of the map for each layer, and `neighbor_overlap`),
 `POST /api/analyze {run,text,mask}` (`mask`: `null`, `"all"` or a list of layers),
-`POST /api/compare {text,baseline,ple}`, `GET /api/norm_dist?run[&bins&gx&aspect]` (seen/unseen norm histograms + hexbin), `GET /api/neighbor_graph?run&id[&layer=-1|l|all&k&k2]` (see `explorer/static/viz/README.md`). Errors are HTTP 400 `{"detail": "..."}`.
+`POST /api/compare {text,baseline,ple}`, `GET /api/norm_dist?run[&bins&gx&aspect]` (norm histograms for seen/unseen tokens + hexbin), `GET /api/neighbor_graph?run&id[&layer=-1|l|all&k&k2]` (see `explorer/static/viz/README.md`). Errors are HTTP 400 `{"detail": "..."}`.
 
 ## Findings
 
-From `runs/ple-small` (L=6, d=384, p=64, 3000 iters × 16×2×256 = 24.6M tokens, reported val loss 2.0198)
-vs. `runs/baseline-small` (same budget, val 2.0288). Produced by
-`python -m explorer.findings` (CPU, ~7 min); raw numbers in `results/explorer_findings.json`.
-Ablation numbers: 100 random 256-token windows from `data/tinystories/val.bin` (seed 0) = 25,500
-next-token predictions. ± is the standard error of the mean per-token Δ.
+These findings compare two runs:
+- `runs/ple-small` (L=6, d=384, p=64, 3000 iters × 16×2×256 = 24.6M tokens, reported val loss 2.0198);
+- `runs/baseline-small` (same budget, val 2.0288).
 
-**Ablation (zeroing the PLE token part; the context part stays).**
+The command
+`python -m explorer.findings` (CPU, ~7 min) makes them. The raw numbers are in `results/explorer_findings.json`.
+The ablation numbers come from 100 random 256-token windows from `data/tinystories/val.bin` (seed 0). This gives 25,500
+next-token predictions. ± is the standard error of the mean Δ for each token.
+
+**Ablation (the PLE token part is set to zero; the context part stays).**
 
 | ablated | mean loss | mean Δloss | tokens worse |
 |---|---:|---:|---:|
@@ -225,24 +251,26 @@ next-token predictions. ± is the standard error of the mean per-token Δ.
 | layer 4 | 2.0881 | +0.025 ± 0.001 | 60.3% |
 | layer 5 | 2.0947 | +0.031 ± 0.002 | 61.4% |
 
-* Layer 0's PLE slice matters most (Δ +0.090, twice layer 1); layers 2–5 are similar (+0.025…+0.031).
-* Removing all layers (+0.621) hurts far more than the sum of single-layer removals (+0.246): the
-  layers partly back each other up. The trained model clearly *uses* the table: without it, it is much
-  worse than the baseline that never had one (2.68 vs 2.07).
-* On the same windows the baseline's loss is 2.0667, i.e. PLE is better by only 0.003 nats here
-  (0.009 by the trainer's val estimate). At this scale/budget the extra 19.3M table parameters buy
-  very little; this is one seed each, so the sign of that small gap is not established.
+* The PLE slice of layer 0 is the most important (Δ +0.090, two times layer 1). Layers 2–5 are similar (+0.025…+0.031).
+* The removal of all layers (+0.621) causes much more damage than the sum of the single-layer removals (+0.246). Thus, the
+  layers partly replace each other. The trained model clearly *uses* the table. Without the table, the model is much
+  worse than the baseline, which never had a table (2.68 vs 2.07).
+* On the same windows, the loss of the baseline is 2.0667. Thus, PLE is better by only 0.003 nats here
+  (0.009 by the val estimate of the trainer). At this scale and budget, the 19.3M additional table parameters give
+  little benefit. There is only one seed for each model. Thus, the sign of this small gap is not certain.
 
-**Row norm vs. frequency.** Spearman ρ between full-row norm and log10(1+train count) is **0.649** over
-all 50,257 GPT-2 tokens and **0.872** over the 22,446 tokens that occur in train.bin (per layer
-0.79–0.81). Mean full-row norm: 3.133 for unseen tokens (init expectation 0.02·p·√L = 3.135, i.e.
-untouched apart from weight decay), 4.016 for seen ones, 7.419 for the 1000 most frequent.
+**Row norm and frequency.** The Spearman ρ between the full-row norm and log10(1+train count) is **0.649** over
+all 50,257 GPT-2 tokens. It is **0.872** over the 22,446 tokens that occur in train.bin (0.79–0.81 for each layer).
+The mean full-row norm is:
+- 3.133 for unseen tokens. The expected initial value is 0.02·p·√L = 3.135. Thus, only weight decay changed these rows;
+- 4.016 for seen tokens;
+- 7.419 for the 1000 most frequent tokens.
 
-**Layer independence.** Mean cosine between different layers' slices over the 1000 most frequent
-tokens is ≈ 0 (all |cos| ≤ 0.02): each layer gets its own, unrelated vector per token.
+**Layer independence.** Over the 1000 most frequent tokens, the mean cosine between the slices of different layers
+is ≈ 0 (all |cos| ≤ 0.02). Each layer gets its own, unrelated vector for each token.
 
-**Nearest neighbours (cosine, top 6).** Single slices are noisy (many unrelated sub-word pieces);
-the full row is cleanly semantic:
+**Nearest neighbours (cosine, top 6).** Single slices have much noise (many unrelated sub-word pieces).
+The full row is clearly semantic:
 
 | token | layer 0 | layer 5 | full row |
 |---|---|---|---|
@@ -253,17 +281,20 @@ the full row is cleanly semantic:
 | " Lily" | Israeli, addy, nie, princess, ita, Lilly | Grace, drum, Sarah, ipop, Tom | Tom, Anna, Mia, Sam, Jill, Ben |
 | " said" | says, replied, mentioned, Story, complain | says, urden, recept, OST, declared | says, saying, say, replied, complained |
 
-Layer 0 tends to keep morphological/lexical relatives (" ran"→" runs", " said"→" says", " dog"→" cat");
-no single layer stands out as "the semantic one". Top cosines are only 0.45–0.67, so this is qualitative.
+Layer 0 usually keeps morphological/lexical relatives (" ran"→" runs", " said"→" says", " dog"→" cat").
+No single layer is clearly "the semantic one". The top cosines are only 0.45–0.67. Thus, this result is qualitative.
 
-**int8 quantisation.** Per-row symmetric int8 gives relative L2 error 0.715–0.738% per layer
-(mean max-abs error per slice 2.79e-4 on raw rows). Its effect on the loss was not measured here.
+**int8 quantisation.** Symmetric int8 with one scale for each row gives a relative L2 error of 0.715–0.738% for each layer.
+The mean max-abs error for each slice is 2.79e-4 on raw rows. We did not measure its effect on the loss here.
 
 **PLE contribution ratio** `‖PLE update‖/‖h‖`, mean over the 25,500 positions, layers 0→5:
 0.611, 0.459, 0.390, 0.361, 0.322, 0.261. Mean gate |gelu(W_gate h)|: 2.55, 3.24, 2.42, 2.08, 2.10, 2.19.
-The declining ratio largely reflects the growing residual norm (the RMSNorm'd update has a roughly fixed
-size), so it is not by itself evidence that late layers use PLE less; the ablation is the better measure.
+The ratio decreases mostly because the residual norm increases (the update after RMSNorm has an almost fixed
+size). Thus, the ratio alone does not show that the last layers use PLE less. The ablation is a better measure.
 
-**Limitations.** One training seed per model, a short budget (24.6M tokens), a single 6-layer config;
-ablation only zeroes the token part (the context part is still injected); neighbour lists are
-qualitative.
+**Limitations.**
+- There is one training seed for each model.
+- The budget is short (24.6M tokens).
+- There is only one config (6 layers).
+- The ablation sets only the token part to zero. The model continues to inject the context part.
+- The neighbour lists are qualitative.

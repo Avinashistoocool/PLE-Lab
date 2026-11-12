@@ -263,7 +263,7 @@
       <p class="eyebrow">Gemma 3n · Per-Layer Embeddings</p>
       <h1>Every layer gets its <em>own</em> embedding of every token.</h1>
       <p class="lede">A PLE table <code>E</code> of shape <code>[V, L·p]</code> stores one small vector per token <em>per layer</em>.
-        It is only ever <em>indexed</em>, never multiplied, so it can live in CPU RAM or flash and stream in a few hundred bytes per token.
+        The model only <em>indexes</em> the table and never multiplies it. Thus, the table can stay in CPU RAM or flash, and the system can stream a few hundred bytes for each token.
         Scroll to follow one token through the model.</p>
     </div>
 
@@ -322,22 +322,22 @@
         <li class="step" data-step="1" data-caption="① the token id is known before the forward pass">
           <span class="step-n">01</span>
           <h3>A token arrives</h3>
-          <p>The tokenizer turns <span class="tok">·dog</span> into the integer <b id="ab-tid">t</b>. That id is known <em>before</em> the forward pass starts, which is what makes prefetching a table row possible.</p>
+          <p>The tokenizer turns <span class="tok">·dog</span> into the integer <b id="ab-tid">t</b>. The model knows this id <em>before</em> the forward pass starts. Thus, it is possible to prefetch a table row.</p>
         </li>
         <li class="step" data-step="2" data-caption="② one row of E is fetched, nothing is multiplied">
           <span class="step-n">02</span>
           <h3>Look up one row</h3>
-          <p>The PLE table <code>E</code> has <b id="ab-V">50,304</b> rows of <b id="ab-Lp">384</b> numbers (<span id="ab-table">19.3M</span> parameters in <span id="ab-run" class="tok">ple-small</span>). The model reads exactly one row, <code>E[t]</code>. No matrix multiply touches the table.</p>
+          <p>The PLE table <code>E</code> has <b id="ab-V">50,304</b> rows of <b id="ab-Lp">384</b> numbers (<span id="ab-table">19.3M</span> parameters in <span id="ab-run" class="tok">ple-small</span>). The model reads exactly one row, <code>E[t]</code>. No matrix multiply uses the table.</p>
         </li>
         <li class="step" data-step="3" data-caption="③ the row is cut into L slices of p numbers">
           <span class="step-n">03</span>
           <h3>Split it into slices</h3>
-          <p>The row is reshaped to <code>[<span id="ab-L">6</span>, <span id="ab-p">64</span>]</code>: one slice of <span id="ab-p2">64</span> numbers for each of the <span id="ab-L2">6</span> layers, scaled by <code>√p</code>. Each layer gets its <em>own</em>, unrelated vector. Across frequent tokens the cosine between layers is about 0.</p>
+          <p>The model changes the shape of the row to <code>[<span id="ab-L">6</span>, <span id="ab-p">64</span>]</code>. This gives one slice of <span id="ab-p2">64</span> numbers for each of the <span id="ab-L2">6</span> layers. The model multiplies each slice by <code>√p</code>. Each layer gets its <em>own</em>, unrelated vector. For frequent tokens, the cosine between layers is about 0.</p>
         </li>
         <li class="step" data-step="4" data-caption="④ each slice is mixed with a projection of the ordinary embedding">
           <span class="step-n">04</span>
           <h3>Mix in context</h3>
-          <p>Each slice is averaged with a projection of the normal input embedding <code>x₀</code>, so the layer sees both the token identity and the embedding space:</p>
+          <p>The model calculates the average of each slice and a projection of the normal input embedding <code>x₀</code>. Thus, the layer gets the token identity and the embedding space:</p>
           <div class="formula" aria-label="u_l equals E of t, slice l, times root p times mask l, plus RMSNorm of W_ctx x0 d to the minus one half, slice l, all over root 2">
             <span class="var">u<sub>l</sub></span><span class="op">=</span>
             <span class="frac"><span class="num">E[t]<sub>l</sub> · √p · mask<sub>l</sub> <span class="op">+</span> RMSNorm(W<sub>ctx</sub> x<sub>0</sub> d<sup>−½</sup>)<sub>l</sub></span><span class="den">√2</span></span>
@@ -346,15 +346,15 @@
         <li class="step" data-step="5" data-caption="⑤ the residual stream decides how much to read: gelu(W_gate·h) ⊙ u_l">
           <span class="step-n">05</span>
           <h3>Gate it</h3>
-          <p>After its attention and MLP sublayers, block <code>l</code> computes a gate from its residual stream <code>h</code> and multiplies it element-wise with <code>u<sub>l</sub></code>. The gate decides <em>how much</em> to read; the slice decides <em>what</em>.</p>
+          <p>After its attention and MLP sublayers, block <code>l</code> calculates a gate from its residual stream <code>h</code>. It multiplies the gate element-wise with <code>u<sub>l</sub></code>. The gate controls <em>how much</em> the layer reads. The slice controls <em>what</em> the layer reads.</p>
           <div class="formula"><span class="var">g<sub>l</sub></span><span class="op">=</span><span>gelu(W<sub>gate</sub> h)</span><span class="op">⊙</span><span>u<sub>l</sub></span></div>
         </li>
         <li class="step" data-step="6" data-caption="⑥ the gated slice is projected and added to the residual stream of all L layers">
           <span class="step-n">06</span>
           <h3>Add it to the stream</h3>
-          <p>The gated vector is projected back to <code>d = <span id="ab-d">384</span></code>, normalised and added to the residual stream, in all <span id="ab-L3">6</span> layers:</p>
+          <p>The model projects the gated vector back to <code>d = <span id="ab-d">384</span></code>, normalises it and adds it to the residual stream. It does this in all <span id="ab-L3">6</span> layers:</p>
           <div class="formula"><span class="var">h</span><span class="op">←</span><span>h</span><span class="op">+</span><span>RMSNorm( W<sub>proj</sub> · g<sub>l</sub> )</span></div>
-          <p class="muted">Ablation in this explorer sets <code>mask<sub>l</sub> = 0</code>: the token part disappears, the context part stays.</p>
+          <p class="muted">In this explorer, the ablation sets <code>mask<sub>l</sub> = 0</code>. The token part goes away, and the context part stays.</p>
         </li>
       </ol>
     </div>
@@ -363,22 +363,22 @@
       <h2 id="results-title">What the trained model does with it</h2>
       <p class="muted">ple-small vs. baseline-small, same budget (24.6M tokens), one seed each. Ablation over 25,500 validation predictions.</p>
       <div class="result-grid">
-        <div class="result"><b data-count="0.621" data-dec="3" data-prefix="+">+0.621</b><span>nats lost when all PLE token parts are zeroed; 75.5% of tokens get worse</span></div>
-        <div class="result"><b data-count="0.090" data-dec="3" data-prefix="+">+0.090</b><span>layer 0 alone, the most important layer, twice layer 1</span></div>
+        <div class="result"><b data-count="0.621" data-dec="3" data-prefix="+">+0.621</b><span>nats of loss increase when all PLE token parts are zero; 75.5% of tokens become worse</span></div>
+        <div class="result"><b data-count="0.090" data-dec="3" data-prefix="+">+0.090</b><span>layer 0 only: the most important layer, two times layer 1</span></div>
         <div class="result"><b data-count="0.87" data-dec="2" data-prefix="ρ ">ρ 0.87</b><span>Spearman correlation of row norm with log token frequency</span></div>
-        <div class="result"><b data-count="19.3" data-dec="1" data-suffix="M">19.3M</b><span>PLE table parameters next to 30.5M dense ones</span></div>
+        <div class="result"><b data-count="19.3" data-dec="1" data-suffix="M">19.3M</b><span>PLE table parameters, compared to 30.5M dense parameters</span></div>
         <div class="result"><b data-count="95" data-dec="0" data-prefix="−" data-suffix="%">−95%</b><span>table VRAM with a 5% static GPU cache, 95.5–96.5% hit rate</span></div>
         <div class="result"><b data-count="0.72" data-dec="2" data-suffix="%">0.72%</b><span>relative error of the int8 table; val loss 2.01533 → 2.01535</span></div>
       </div>
       <h3>Reading the views</h3>
       <ul class="reading">
-        <li><b>Norms</b>: slices start at norm ≈ 0.02·p; rows that never appear in training stay there, so the norm is a proxy for "how trained" a token is.</li>
-        <li><b>Neighbours</b>: tokens with similar slices in a layer are treated alike by that layer's PLE path. Full rows are cleanly semantic: <span class="tok">·happy</span> → glad, lucky, cheerful.</li>
-        <li><b>Gate magnitude</b>: mean |gelu(W<sub>gate</sub>h)|. High = the layer is reading a lot of this token's slice at this position.</li>
-        <li><b>Contribution ratio</b>: size of the PLE update relative to the residual stream; how loudly PLE "speaks" in each layer.</li>
-        <li><b>Δloss</b>: ablated − normal loss. Red tokens got harder to predict without PLE, so the model relies on PLE for them.</li>
+        <li><b>Norms</b>: the slices start at a norm of ≈ 0.02·p. Rows that never occur in training stay there. Thus, the norm shows about how much training a token got.</li>
+        <li><b>Neighbours</b>: the PLE path of a layer processes tokens with similar slices in that layer in a similar way. Full rows are clearly semantic: <span class="tok">·happy</span> → glad, lucky, cheerful.</li>
+        <li><b>Gate magnitude</b>: mean |gelu(W<sub>gate</sub>h)|. A high value means that the layer reads much of the slice of this token at this position.</li>
+        <li><b>Contribution ratio</b>: the size of the PLE update, relative to the residual stream. It shows how strong the PLE signal is in each layer.</li>
+        <li><b>Δloss</b>: ablated − normal loss. Red tokens were more difficult to predict without PLE. Thus, the model needs PLE for them.</li>
       </ul>
-      <p class="muted">The 0.009 val-loss gap to the baseline is within single-seed noise. See <code>docs/EXPLORER.md</code> for details.</p>
+      <p class="muted">The val-loss gap of 0.009 to the baseline is in the range of the noise of a single seed. For more data, see <code>docs/EXPLORER.md</code> for details.</p>
     </section>
   </section>
 </main>

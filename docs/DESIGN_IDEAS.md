@@ -11,7 +11,7 @@ Verified on 2026-11-12: npm versions come from `npm view`, file sizes from fetch
 
 ### Recommended visual direction: "Instrument Panel", a restrained sci-fi HUD on a near-black lab surface
 
-Pick **one** direction and commit to it. I recommend a calm, dark **scientific-instrument / HUD** look:
+Select **one** direction and use it everywhere. I recommend a calm, dark **scientific-instrument / HUD** look:
 - near-black blue surfaces;
 - 1-px hairline borders with subtle corner ticks;
 - monospace numerals;
@@ -65,14 +65,17 @@ Each row lists one tool, the patterns worth stealing and how they map onto PLE E
 ### TensorFlow Embedding Projector
 Sources: https://projector.tensorflow.org/ and the paper by Smilkov et al. 2016, https://arxiv.org/abs/1611.05469.
 - **2D/3D toggle** for the same projection, with an auto-rotate orbit in 3D. → Give our Map a `2D | 3D` segmented switch. The 2D view can reuse the same camera, top-down orthographic.
-- **Search box that selects and isolates** matches. "Isolate N points" re-runs the projection on the subset. → Lasso or search, then **"re-project selection"** via a new `/api/projection?ids=` endpoint.
-- **Nearest-neighbour inspector:** clicking a point draws lines to its k neighbours and lists them in a side panel, with the distance metric (cosine vs Euclidean) selectable. → Our "constellation lines" (#3).
+- **Search box that selects and isolates** matches. "Isolate N points" re-runs the projection on the subset. → Lasso or search, then **"re-project selection"** with a new `/api/projection?ids=` endpoint.
+- **Nearest-neighbour inspector:** a click on a point draws lines to its k neighbours and lists them in a side panel. You can select the distance metric (cosine vs Euclidean). → Our "constellation lines" (#3).
 - **Bookmarks:** saved view states with a camera plus a selection, playable as a story. → "Snapshots" in the URL hash (#19).
 - **Label by / colour by** drop-downs from metadata columns. → Colour by frequency rank, norm, layer, k-means cluster or "seen in train".
 
 ### Neuronpedia
 Sources: https://www.neuronpedia.org/ (open source, Apache-2.0, https://github.com/hijohnnylin/neuronpedia) and its graph view at https://www.neuronpedia.org/gemma-2-2b/graph.
-- **Feature dashboard layout:** a header with an ID and summary stats, then **top activating text snippets with per-token highlight**, then logit lists (positive/negative) and density histograms. → Our Token tab should read like a "feature card":
+- **Feature dashboard layout:**
+  1. a header with an ID and summary stats;
+  2. **top activating text snippets with per-token highlight**;
+  3. logit lists (positive/negative) and density histograms. → Our Token tab should read like a "feature card":
   - big glyph plus key numbers;
   - **"where this token's PLE gets gated hardest"**, which needs sample contexts (new endpoint);
   - the neighbour list;
@@ -82,26 +85,27 @@ Sources: https://www.neuronpedia.org/ (open source, Apache-2.0, https://github.c
 
 ### Anthropic feature browser and attribution graphs
 Sources: Scaling Monosemanticity, https://transformer-circuits.pub/2024/scaling-monosemanticity/; Circuit Tracing methods, https://transformer-circuits.pub/2025/attribution-graphs/methods.html; and Biology, https://transformer-circuits.pub/2025/attribution-graphs/biology.html.
-- **Graph layout:** the prompt runs along the bottom, layers stack upward and the output sits on top. Nodes are hoverable; **Cmd/Ctrl+Click builds a subgraph**; features can be grouped into **"supernodes"**. The methods paper describes "Nodes can be hovered over and clicked on … Subgraphs can also be constructed by using Cmd/Ctrl+Click".
+- **Graph layout:** the prompt runs along the bottom, layers stack upward and the output sits on top. Nodes are hoverable; **Cmd/Ctrl+Click builds a subgraph**; features can be grouped into **"supernodes"**. The methods paper says: "Nodes can be hovered over and clicked on … Subgraphs can also be constructed by using Cmd/Ctrl+Click".
   → **Analyze "layer × position grid"**: x = token position, y = layer 0..5 (bottom to top) and node size = gate. Edge-like vertical connectors could encode the contribution ratio. This is the same spatial grammar, applied to PLE injection points.
-- **Feature-browser side panel:** clicking anything opens a persistent right-hand panel with the details, so the main view never navigates away. → Adopt globally: a **detail drawer** instead of switching tabs on click. Keep "open in Token tab" as an explicit button.
+- **Feature-browser side panel:** a click on an item opens a persistent panel on the right with the details. Thus, the main view never navigates away. → Adopt globally: a **detail drawer** instead of switching tabs on click. Keep "open in Token tab" as an explicit button.
 - **Pruning slider** (keep the top x% of edges by influence). → Use a "top-k neighbours" / "edge threshold" slider on the constellation and the force graph.
 
 ### Transformer Explainer (Polo Club)
 Sources: https://poloclub.github.io/transformer-explainer/ and arXiv 2408.04619.
 - **Live model in the loop:** type text and every view updates. A **temperature slider** reshapes the output distribution in real time. → Debounce re-analysis on textarea input, about 400 ms. CPU inference on a 6-layer model is fast enough.
-- **Expand-on-click abstraction levels:** a block opens into its sub-operations with a smooth zoom transition. → The About tab could become an **interactive diagram of the PLE equation**. Each term of `u_l = (E[t]_l·√p·mask_l + RMSNorm(W_ctx x₀))/√2` would be a clickable box showing that term's live values for the selected token.
+- **Expand-on-click abstraction levels:** a click opens a block into its sub-operations, with a smooth zoom transition. → The About tab could become an **interactive diagram of the PLE equation**. Each term of `u_l = (E[t]_l·√p·mask_l + RMSNorm(W_ctx x₀))/√2` would be a clickable box showing that term's live values for the selected token.
 - **Animated flow lines** (dashed strokes moving along a path) show data flowing between components. → Use them on the PLE diagram and the attribution-style grid.
 
 ### LLM Visualization (Brendan Bycroft, 3D)
 Sources: https://bbycroft.net/llm and https://github.com/bbycroft/llm-viz (MIT).
-- **Whole model as 3D blocks of cells**: every tensor is a slab of cubes coloured by value, and the camera flies between stages during a guided walkthrough. → A **"PLE table slab"**: a 3D InstancedMesh of 6 × 64 cells for the current token, extruded by value. Fly the camera from the table → the slice → the gate → the residual stream.
+- **Whole model as 3D blocks of cells**: each tensor is a slab of cubes, coloured by value. During a guided walkthrough, the camera flies between stages. → A **"PLE table slab"**: a 3D InstancedMesh of 6 × 64 cells for the current token, extruded by value. Fly the camera from the table → the slice → the gate → the residual stream.
 - **Narrated, step-wise camera tours** with a progress timeline on the left. → Use the "Tour" mode in the shell (command palette: "Start tour").
-- **Hover a cell → see its formula and inputs highlighted.** → Heatmap cell hover should highlight the same `(layer, dim)` in the radial glyph and the 3D slab (linked brushing).
+- **Hover a cell → see its formula and inputs highlighted.**
+  → A hover on a heatmap cell must highlight the same `(layer, dim)` in the radial glyph and the 3D slab (linked brushing).
 
 ### Nomic Atlas and its deepscatter engine
 Sources: https://atlas.nomic.ai/, https://github.com/nomic-ai/deepscatter and the docs at https://docs.nomic.ai/atlas/embeddings-and-retrieval/guides/how-to-visualize-embeddings.
-- **Automatic topic labels** placed at cluster centroids, with label density adapting to zoom (more labels as you zoom in). → In 3D, label the k-means cluster centroids with the most frequent member token, and show the top-N labels by screen-space priority.
+- **Automatic topic labels** at cluster centroids. The label density changes with zoom (more labels when you zoom in). → In 3D, label the k-means cluster centroids with the most frequent member token, and show the top-N labels by screen-space priority.
 - **Lasso, then "tag"/filter, with a linked data table below the map.** → A lasso selection drawer (#11).
 - **Smooth zoom with points scaling sub-linearly** so dense areas stay readable. → Point size ∝ `zoom^0.5`.
 
@@ -112,14 +116,14 @@ Sources: https://apple.github.io/embedding-atlas/ and https://github.com/apple/e
 
 ### Distill.pub
 Sources: Wattenberg et al. 2016, "How to Use t-SNE Effectively", https://distill.pub/2016/misread-tsne/; Activation Atlas, https://distill.pub/2019/activation-atlas/; Zoom In, https://distill.pub/2020/circuits/zoom-in/.
-- **Small multiples with a parameter scrubber**, plus an honest caption on what the projection can and cannot show. → **Six mini-maps (L0–L5) in a row** above the big map, which doubles as a layer picker. Show the PCA explained variance prominently, as Distill would.
-- **Activation Atlas grid aggregation:** bin the 2D map into a grid and render each cell's averaged representative. → The hexbin "atlas" mode of the Map, where each hex is labelled by its most frequent token.
+- **Small multiples with a parameter scrubber**, plus an honest caption. The caption tells what the projection can show and what it cannot show. → **Six mini-maps (L0–L5) in a row** above the big map, which doubles as a layer picker. Show the PCA explained variance prominently, as Distill would.
+- **Activation Atlas grid aggregation:** put the 2D map into the bins of a grid. Render the averaged representative of each cell. → The hexbin "atlas" mode of the Map, where each hex is labelled by its most frequent token.
 - **Margin notes and hover-defined terms.** → About tab and chart captions.
 
 ### BertViz
 Source: https://github.com/jessevig/bertviz (Apache-2.0).
-- **Model view:** a bird's-eye grid of every layer × head thumbnail; click one to enlarge. → The **Analyze "layer strip"**: six thumbnail rows of gate-per-token, click to expand. This is the same small-multiple idea.
-- **Head view:** lines between tokens weighted by attention, with hover to isolate. → In Compare, connect each token's baseline-loss and PLE-loss points (slope lines) and hover to isolate.
+- **Model view:** a bird's-eye grid with a thumbnail for each layer × head. Click a thumbnail to enlarge it. → The **Analyze "layer strip"**: six thumbnail rows of gate-per-token, click to expand. This is the same small-multiple idea.
+- **Head view:** lines between tokens, weighted by attention. A hover isolates a line. → In Compare, connect each token's baseline-loss and PLE-loss points (slope lines) and hover to isolate.
 
 ### Scrollytelling and other ML visualisations
 - R2D3, "A visual introduction to machine learning": scroll-driven transitions of the same marks. http://www.r2d3.us/visual-intro-to-machine-learning-part-1/
@@ -146,11 +150,11 @@ has no further network imports once downloaded, or that the listed sibling files
 | three-spritetext | 1.10.0 / MIT | `https://cdn.jsdelivr.net/npm/three-spritetext@1.10.0/dist/three-spritetext.min.js` | 9 KB | ✅ | Billboard labels |
 | **regl-scatterplot** | 1.16.0 / MIT | ESM: `https://esm.sh/regl-scatterplot@1.16.0/es2022/regl-scatterplot.bundle.mjs` | 96 KB | ⚠️ It imports `/pub-sub-es@~3.0.0` and `/regl@~2.1.1`. Vendor `https://cdn.jsdelivr.net/npm/regl@2.1.1/+esm` (123 KB) and `https://cdn.jsdelivr.net/npm/pub-sub-es@3.0.0/+esm` (2 KB) and rewrite the 2 import paths, **or** use the UMD `.../regl-scatterplot@1.16.0/dist/regl-scatterplot.min.js` (111 KB) plus `regl.min.js` (85 KB) and a 2 KB pub-sub-es UMD as globals | Its README says up to 20 million points with fast lasso, animated point transitions and `colorBy`/`opacityBy`/`sizeBy` (https://github.com/flekschas/regl-scatterplot). This is the **best 2D 50k-point engine** |
 | regl | 2.1.1 / MIT | `https://cdn.jsdelivr.net/npm/regl@2.1.1/dist/regl.min.js` | 85 KB | ✅ | |
-| **d3** | 7.9.2 / ISC | UMD: `https://cdn.jsdelivr.net/npm/d3@7.9.2/dist/d3.min.js` | 274 KB | ✅ Single file, `window.d3` | **Don't** use `.../d3@7.9.2/+esm`; it fans out to about 30 module imports. The UMD file is the vendorable one. Covers scales, zoom, brush, force, contours, Delaunay, shapes (`d3.area`, `d3.stack`) and interpolators |
+| **d3** | 7.9.2 / ISC | UMD: `https://cdn.jsdelivr.net/npm/d3@7.9.2/dist/d3.min.js` | 274 KB | ✅ Single file, `window.d3` | **Do not** use `.../d3@7.9.2/+esm`. It loads about 30 module imports. The UMD file is the vendorable one. Covers scales, zoom, brush, force, contours, Delaunay, shapes (`d3.area`, `d3.stack`) and interpolators |
 | d3-hexbin | 0.2.2 / BSD-3 | `https://cdn.jsdelivr.net/npm/d3-hexbin@0.2.2/build/d3-hexbin.min.js` | 2 KB | ✅ Attaches `d3.hexbin` | |
-| d3-force-3d | 3.0.6 / MIT | `https://cdn.jsdelivr.net/npm/d3-force-3d@3.0.6/+esm` | small | ⚠️ ESM with deps; easier via 3d-force-graph | |
+| d3-force-3d | 3.0.6 / MIT | `https://cdn.jsdelivr.net/npm/d3-force-3d@3.0.6/+esm` | small | ⚠️ ESM with deps; easier with 3d-force-graph | |
 | **force-graph** (2D) | 1.52.0 / MIT | `https://cdn.jsdelivr.net/npm/force-graph@1.52.0/dist/force-graph.min.js` | 169 KB | ✅ Self-contained UMD (`ForceGraph`) | Canvas; ideal for the neighbour graph |
-| **3d-force-graph** | 1.80.2 / MIT | `https://cdn.jsdelivr.net/npm/3d-force-graph@1.80.2/dist/3d-force-graph.min.js` | 1.36 MB | ✅ It **bundles its own three.js copy** | Don't load it next to our three.js (duplicate three, about 1 MB wasted). Prefer building the constellation in our own three scene |
+| **3d-force-graph** | 1.80.2 / MIT | `https://cdn.jsdelivr.net/npm/3d-force-graph@1.80.2/dist/3d-force-graph.min.js` | 1.36 MB | ✅ It **bundles its own three.js copy** | Do not load it next to our three.js (duplicate three, about 1 MB wasted). Prefer building the constellation in our own three scene |
 | deck.gl standalone | 9.4.1 / MIT | `https://cdn.jsdelivr.net/npm/deck.gl@9.4.1/dist.min.js` | 2.03 MB | ✅ Single UMD (`deck`) | `OrbitView` + `PointCloudLayer` handle 50k points easily. Overlaps with three; only worth it if agent (a) has not started on three |
 | Plotly | 4.3.0 / MIT | `https://cdn.jsdelivr.net/npm/plotly.js-dist-min@4.3.0/plotly.min.js` | 4.73 MB | ✅ | Heavy; `scatter3d` and `scattergl` work but look "Plotly". Not recommended |
 | ECharts | 6.1.0 / Apache-2.0 | `https://cdn.jsdelivr.net/npm/echarts@6.1.0/dist/echarts.min.js` | 1.10 MB | ✅ | Polished themes, `themeRiver` (streamgraph) and parallel axes |
@@ -158,7 +162,7 @@ has no further network imports once downloaded, or that the listed sibling files
 | **GSAP** | 3.15.1 / "Standard no-charge" licence | `https://cdn.jsdelivr.net/npm/gsap@3.15.1/dist/gsap.min.js` (+ `dist/Flip.min.js`, 25 KB) | 72 KB | ✅ | Free unless end users are charged (https://gsap.com/standard-license). It is *not* OSI open source. Timelines plus Flip for chip/tab layout morphs |
 | Motion (motion.dev) | 14.13.0 / MIT | `https://cdn.jsdelivr.net/npm/motion@14.13.0/dist/motion.js` | 187 KB (UMD) | ✅ | MIT alternative to GSAP: `animate()` with spring physics |
 | Observable Plot | 0.6.19 / ISC | `https://cdn.jsdelivr.net/npm/@observablehq/plot@0.6.19/dist/plot.umd.min.js` | 207 KB | ✅ Needs the d3 UMD loaded first | Fast to author ridgelines, hexbin and dot plots as SVG |
-| uPlot | 1.6.32 / MIT | `https://cdn.jsdelivr.net/npm/uplot@1.6.32/dist/uPlot.iife.min.js` | 50 KB | ✅ | Tiny and very fast line/bar charts with a cursor sync API |
+| uPlot | 1.6.32 / MIT | `https://cdn.jsdelivr.net/npm/uplot@1.6.32/dist/uPlot.iife.min.js` | 50 KB | ✅ | Tiny and fast line/bar charts with a cursor sync API |
 | umap-js | 1.4.0 / MIT | `https://cdn.jsdelivr.net/npm/umap-js@1.4.0/lib/umap-js.min.js` | 81 KB | ✅ | Better done server-side (`umap-learn` or sklearn TSNE) and cached |
 | lil-gui | 0.21.0 / MIT | `https://cdn.jsdelivr.net/npm/lil-gui@0.21.0/dist/lil-gui.esm.min.js` | 29 KB | ✅ | Quick "visual settings" panel for the 3D map (bloom strength, point size) |
 | Tweakpane | 4.0.5 / MIT | `https://cdn.jsdelivr.net/npm/tweakpane@4.0.5/dist/tweakpane.min.js` | 149 KB | ✅ | Prettier lil-gui with a HUD aesthetic |
@@ -173,12 +177,15 @@ has no further network imports once downloaded, or that the listed sibling files
   "three": "/static/vendor/three/three.module.min.js",
   "three/addons/": "/static/vendor/three/addons/" } }</script>
 ```
-If you vendor the **min** pair, check that `three.module.min.js` imports `./three.core.min.js`. jsDelivr's
-auto-minified file keeps `./three.core.js`, so **either rename the core file to `three.core.js` or
-vendor the unminified pair** (659 KB + 1.47 MB, served gzipped by FastAPI only if middleware is added).
+If you vendor the **min** pair, make sure that `three.module.min.js` imports `./three.core.min.js`.
+The auto-minified file of jsDelivr keeps `./three.core.js`. Thus, **either rename the core file to `three.core.js` or
+vendor the unminified pair** (659 KB + 1.47 MB). FastAPI serves them gzipped only if you add middleware.
 
-**Recommended stack:** three (3D) + d3 UMD (all 2D SVG/canvas charts, force, brush, zoom, contours, hexbin) +
-optionally regl-scatterplot (the 2D map at 50k points) + Motion or GSAP (UI tweens).
+**Recommended stack:**
+- three (3D);
+- d3 UMD (all 2D SVG/canvas charts, force, brush, zoom, contours, hexbin);
+- optionally, regl-scatterplot (the 2D map at 50k points);
+- Motion or GSAP (UI tweens).
 Skip Plotly, ECharts and deck.gl: they duplicate capability, add 1–5 MB and impose their own look.
 
 ---
@@ -219,7 +226,8 @@ Show the explained variance per layer as a small bar in the HUD. Two or three PC
 - **Shows:** the n most frequent tokens as glowing points in 3D. A layer scrubber (L0…L5, with a play button) tweens the points between Procrustes-aligned layer projections. **Stack mode** places the six layer clouds along Z (z = layer × gap), like a deck of slides you can orbit.
 - **Why it matters for PLE:**
   - It shows directly whether a token's *neighbourhood* survives from layer to layer.
-  - Clusters that stay together mean layers re-encode the same grouping; clusters that dissolve mean each layer gets its own unrelated code, as the cos ≈ 0 finding predicts.
+  - Clusters that stay together mean that the layers encode the same grouping again.
+  - Clusters that dissolve mean that each layer gets its own unrelated code. The cos ≈ 0 finding predicts this.
   - Stack mode makes "6 independent tables in one row" tangible.
 - **Sketch** (three, InstancedBufferAttribute or Points with a custom shader):
 ```js
@@ -241,7 +249,7 @@ const mat = new THREE.ShaderMaterial({ uniforms:{ t:{value:0}, size:{value:3}, s
 - **Shows:** for selected tokens (search hits, lasso set or the top-20), a 6-vertex polyline through their per-layer positions in stack mode. The line is coloured from layer 0 (amber) to layer 5 (cyan), with a small arrowhead at L5. Searching a token makes the camera **fly** to it (a 1.2 s tween of `controls.target` and `camera.position`), pulse its point and draw its ribbon.
 - **Why it matters for PLE:**
   - It visualises how one token's *relative* position changes across layers.
-  - Long, jagged ribbons mean "this token is encoded very differently per layer".
+  - Long, jagged ribbons mean "this token is encoded differently in each layer".
   - Frequent function words (`" the"`, `"."`) can be compared with content words.
   - Combined with the norm encoding (ribbon width ∝ slice norm), the reader sees *where the token's signal is large*.
 - **Sketch** (three `LineSegments2` + `LineMaterial`):
@@ -373,8 +381,8 @@ g.selectAll('path').data(bins).join('path').attr('d', hb.hexagon()).attr('transf
   - **Data:** a new `stats` option `?full=1` that returns `norm[V]` and `freq[V]` as compact arrays (about 50k × 2 numbers, roughly 600 KB JSON). The server could also pre-bin: `hexbin{x,y,count,examples}`.
 
 ### #10 Sparkline chips · Analyze · **S** · Wow ★★★☆☆
-- **Shows:** each chip gets a 6-bar micro-sparkline underneath (gate per layer, or Δloss per layer when per-layer ablation is available), drawn as a single inline SVG or a CSS gradient. The chip background still encodes the selected metric.
-- **Why it matters for PLE:** every token's per-layer profile is visible without hovering, so patterns such as "names light up L1" pop out across the whole sentence.
+- **Shows:** each chip gets a 6-bar micro-sparkline below it. The sparkline shows the gate per layer, or the Δloss per layer when per-layer ablation is available. Draw it as a single inline SVG or a CSS gradient. The chip background still encodes the selected metric.
+- **Why it matters for PLE:** the per-layer profile of each token is visible without a hover. Thus, patterns such as "names light up L1" are easy to see in the full sentence.
 - **Sketch:**
 ```js
 const spark = g => `<svg class="spark" viewBox="0 0 ${L*3} 10">${g.map((v,l)=>`<rect x="${l*3}" y="${10-10*v/gmax}" width="2" height="${10*v/gmax}" fill="${layerColor(l)}"/>`).join('')}</svg>`;
@@ -449,11 +457,11 @@ function tween(from,to,ms){ const t0=performance.now(); (function f(now){ const 
 
 ### #17 Layer × position grid (attribution-graph style) · Analyze · **M** · Wow ★★★★☆
 - **Shows:** a grid with x = tokens and y = layers 0–5 from bottom to top. Each cell is a circle with area = gate and colour = contribution ratio. When ablation is on, an outline ring shows that layer's Δ. Hovering a column lights up the whole token path; clicking pins it in the side panel.
-- **Why it matters for PLE:** it mirrors Anthropic's attribution-graph layout (prompt at the bottom, depth upward), so it reads as "where in the network PLE is injected", and it supersedes the single-layer slider.
-- **Data:** the existing `gate[T][L]` and `contrib_ratio[T][L]`. A per-layer Δ needs **per-layer ablation in one call**, via a new `mask:"each"` option that returns `delta[L][T]` (about L+1 forward passes; cheap).
+- **Why it matters for PLE:** it copies the attribution-graph layout of Anthropic (prompt at the bottom, depth upward). Thus, it shows "where in the network PLE is injected". It replaces the single-layer slider.
+- **Data:** the existing `gate[T][L]` and `contrib_ratio[T][L]`. A per-layer Δ needs **per-layer ablation in one call**, with a new `mask:"each"` option that returns `delta[L][T]` (about L+1 forward passes; cheap).
 
 ### #18 Layer-similarity matrix as an animated chord or arc diagram · Token · **S** · Wow ★★★☆☆
-- **Shows:** keep the matrix, but add a toggle to an **arc diagram**: six layer nodes on a line, with arcs whose thickness = |cos| and colour = sign. Animate from the token's matrix to the global average and back.
+- **Shows:** keep the matrix, but add a toggle to an **arc diagram**. The diagram has six layer nodes on a line. The thickness of each arc = |cos|, and its colour = sign. Animate from the token's matrix to the global average and back.
 - **Why it matters for PLE:** "≈ 0 everywhere" is a boring heatmap but a striking *empty* arc diagram. Any token with strong cross-layer arcs is immediately an outlier worth investigating.
 
 ### #19 Shareable view state (URL hash snapshots) · Global · **S** · Wow ★★☆☆☆
@@ -471,7 +479,7 @@ function tween(from,to,ms){ const t0=performance.now(); (function f(now){ const 
 - **Why it matters for PLE:** it supports the "can the table live in int8 / flash?" argument.
 
 ### #22 3D "PLE table slab" · Token · **L** · Wow ★★★★★
-- **Shows:** the bbycroft-style extruded cell grid of the token's `[6 × 64]` row (InstancedMesh, height = value, diverging colour), floating above a dim "table" plane hinting at the 50k rows. The camera dollies in from the full table to the row to a slice. Hovering a cell shows `(layer, dim, value)`.
+- **Shows:** an extruded cell grid (bbycroft style) of the `[6 × 64]` row of the token (InstancedMesh, height = value, diverging colour). It floats above a dim "table" plane that represents the 50k rows. The camera dollies in from the full table to the row to a slice. Hovering a cell shows `(layer, dim, value)`.
 - **Why it matters for PLE:** it physically conveys "token-ID-indexed lookup of a row of 6 slices". The fact that the table is only *indexed* is the core idea of PLE.
 - **Effort:** L because of camera choreography; it can reuse agent (a)'s three scene.
 
@@ -495,14 +503,14 @@ Make it consistent so the app feels like one instrument:
 ## 5. Accessibility and performance
 
 ### Rendering 50k points
-- **3D (three):** use **one `THREE.Points` draw call** with a custom shader, with all attributes in typed arrays. 50k points is trivial (even 500k is fine) as long as you avoid one Mesh per point.
+- **3D (three):** use **one `THREE.Points` draw call** with a custom shader, with all attributes in typed arrays. 50k points is easy (500k is also fine). Do not use one Mesh for each point.
   - Layer morph: tween a **uniform `t`** on the GPU (#1). Never rewrite 50k positions per frame in JS.
-  - Picking: `Raycaster` with `params.Points.threshold` over 50k points is OK on hover with a throttle. For snappier picking, use a GPU picking pass (render ids as colours to a 1×1 render target), or a spatial grid in screen space rebuilt when the camera stops.
+  - Picking: `Raycaster` with `params.Points.threshold` over 50k points is OK on hover with a throttle. For faster picking, use a GPU picking pass (render ids as colours to a 1×1 render target). Another option is a spatial grid in screen space that you build again when the camera stops.
   - Labels: CSS2D for ≤ 60 labels (the top-frequency ones in view plus the hovered and selected tokens). Recompute on `controls.change`, throttled to 10 Hz.
   - Bloom costs about 2–4 ms per frame at 1080p. Set `renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5))` when bloom is on.
   - **Render on demand:** only call `composer.render()` when the controls change, a tween is active or a hover changes. This saves battery and lets the tab idle.
 - **2D:** regl-scatterplot (WebGL) handles 50k points with lasso and transitions. Canvas 2D handles about 10k comfortably *if* drawn in batches: bucket points by colour, use one `beginPath` per bucket and `rect` instead of `arc`. The current `scatter()` calls `arc` plus `fill` per point and does an O(n) nearest search on every mousemove; use `d3.Delaunay.find` (O(log n)) instead.
-- **Data transfer:** for n ≥ 10k, send binary. One option is `Float32Array` via `Response.arrayBuffer()` with a small JSON header. Another is quantising positions to `Int16` (×1/32767 scale), which halves the size again. Cache per run, layer and n with an `ETag` derived from the run's mtime.
+- **Data transfer:** for n ≥ 10k, send binary. One option is `Float32Array` with `Response.arrayBuffer()` with a small JSON header. Another is quantising positions to `Int16` (×1/32767 scale), which halves the size again. Cache per run, layer and n with an `ETag` derived from the run's mtime.
 - **Server:** PCA and Procrustes for 6 layers × 50k × 64 takes well under a second with numpy. Cache as `.npy` in `runs/.explorer_cache/` exactly as the frequency cache does.
 
 ### Reduced motion
@@ -531,7 +539,11 @@ Reference: https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-reduc
   | `#f5a524` | `#4fc3f7` | `#2dd4a7` | `#f472b6` | `#a78bfa` | `#e8e36b` |
 
   Use the same layer colour everywhere: bars, river bands, ridges, ribbons and checkboxes.
-- **Never encode with colour alone:** add the value to tooltips, use dashed lines for reference values, mark positive/negative bars with a ▲/▼ glyph in tables and keep the text contrast checked below.
+- **Never encode with colour alone:**
+  - add the value to tooltips;
+  - use dashed lines for reference values;
+  - mark positive/negative bars with a ▲/▼ glyph in tables;
+  - keep the text contrast that is checked below.
 - Contrast against `--bg #0a0d14`:
   - text `#e6e9f2`: 16.0:1;
   - muted `#8a93a8`: 6.3:1;
@@ -553,8 +565,8 @@ Reference: https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-reduc
 ### Comparison of directions
 | Direction | Look | Pros | Cons for this app |
 |---|---|---|---|
-| Glassmorphism | translucent blurred panels over a gradient or 3D background | very "2024", pairs with an animated background | `backdrop-filter: blur` over a live WebGL canvas costs 2–6 ms/frame; low contrast hurts heatmaps; panels look muddy over dense points |
-| Neo-brutalism | thick black borders, flat saturated blocks, hard offset shadows | playful, very legible | fights perceptual colour maps; feels like a toy rather than an instrument |
+| Glassmorphism | translucent blurred panels over a gradient or 3D background | current ("2024") look, pairs with an animated background | `backdrop-filter: blur` over a live WebGL canvas costs 2–6 ms/frame; low contrast hurts heatmaps; panels look muddy over dense points |
+| Neo-brutalism | thick black borders, flat saturated blocks, hard offset shadows | playful, highly legible | fights perceptual colour maps; feels like a toy rather than an instrument |
 | **Terminal / sci-fi HUD (restrained)** ✅ | near-black, hairlines, corner ticks, mono numerals, one glow accent | matches "instrument reading a model"; maximum data contrast; glow budget goes to the data; cheap to render | risk of cliché if overdone, so keep the decoration to corner ticks and a grid background only |
 
 **Recommendation:** the restrained HUD, with **one** glass element allowed: the floating 3D-map overlay controls, which may use `backdrop-filter: blur(8px)` because they are small.
@@ -617,7 +629,7 @@ Reference: https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-reduc
 
 ### Signature HUD details (use sparingly)
 - **Corner ticks** on cards: draw 8-px L-shaped brackets at the 4 corners with two layered `linear-gradient` backgrounds in `--hairline-strong`. On `:hover` they become `--accent` (150 ms).
-- **Background:** a 24-px dot grid (`radial-gradient(circle, var(--bg-grid) 1px, transparent 1px)`) plus one very slow radial "aurora" in `rgba(34,211,238,.05)` drifting over 40 s. Under reduced motion it is static.
+- **Background:** a 24-px dot grid (`radial-gradient(circle, var(--bg-grid) 1px, transparent 1px)`) plus one slow radial "aurora" in `rgba(34,211,238,.05)` drifting over 40 s. Under reduced motion it is static.
 - **Card header strip:** an uppercase mono label on the left and a live readout on the right (e.g. `L0 · 2.31 · ×2.9 INIT`).
 - **Active tab:** text in `--text`, a 2-px underline in `--accent` that **slides** between tabs (one absolutely positioned bar, with `transform` transitions over `--d-base` using `--ease-out`).
 
@@ -629,7 +641,7 @@ Reference: https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-reduc
   - hover adds `--glow-accent` (150 ms).
 - **Chips:** hover lifts them 1 px with a slight scale of 1.04 using `--ease-spring`, and adds an outline in `--accent`. A pinned chip gets a persistent glow.
 - **Numbers:** count up on change (600 ms), and the changed digit flashes `--accent` for 300 ms.
-- **Tooltips:** fade plus 4-px slide from the cursor (`--d-fast`), using `--surface-3` with a hairline border, a mono header row (token and `#id`) and key/value rows below.
+- **Tooltips:** fade plus 4-px slide from the cursor (`--d-fast`). Use `--surface-3` with a hairline border, a mono header row (token and `#id`) and key/value rows below.
 - **Sliders:** the layer slider becomes a **segmented L0…L5 control** with layer-colour dots, plus arrow-key support.
 - **Copy feedback:** clicking a token piece copies it to the clipboard and shows a toast "copied ␣dog".
 
@@ -650,7 +662,7 @@ HUD flavour: while the 3D map loads, show a **scanline progress** with mono text
 ## 7. Ideas for the parallel agents
 
 **For (a), the 3D map agent:**
-- **Don't morph raw per-layer PCA coordinates.** Align them (Procrustes) or use shared axes (§3.1). Otherwise the morph is noise from sign flips and rotations.
+- **Do not morph raw per-layer PCA coordinates.** Align them (Procrustes) or use shared axes (§3.1). Otherwise the morph is noise from sign flips and rotations.
 - One `Points` draw call with a custom shader, tweening a uniform `t` on the GPU, rendered on demand.
 - Bloom brightness ∝ norm / init (#13): it makes "trained-ness" glow.
 - Add stack mode (Z = layer) and trajectory ribbons (#2).
@@ -670,7 +682,7 @@ HUD flavour: while the 3D map loads, show a **scanline progress** with mono text
 - URL-hash state (#19).
 - Avoid full-page `backdrop-filter` over the WebGL canvas.
 
-**For (c), the charts agent:** in priority order, #5 gate river, #6 ablation morph, #4 radial glyph, #7 ridgelines, #8 slope chart, #9 hexbin, #10 sparkline chips, #16 heatmap modes, #17 layer×position grid and #18 arc diagram. Use the d3 UMD as the single 2D dependency.
+**For (c), the charts agent:** use the d3 UMD as the single 2D dependency. The priority order is: #5 gate river, #6 ablation morph, #4 radial glyph, #7 ridgelines, #8 slope chart, #9 hexbin, #10 sparkline chips, #16 heatmap modes, #17 layer×position grid and #18 arc diagram.
 
 ### New endpoints suggested (all optional, all cheap)
 | Endpoint | Returns | Used by |
