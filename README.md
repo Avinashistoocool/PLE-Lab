@@ -2,7 +2,7 @@
 
 PLE Lab trains a small GPT with optional **Per-Layer Embeddings (PLE)** on TinyStories. It measures PLE table access from GPU memory, CPU RAM, and memory-mapped files that stand in for SSD or phone flash. It also lets you inspect trained token vectors by layer. This is an independent, small-scale experiment inspired by the Gemma 3n PLE design. It does not implement Gemma 3n's AltUp streams. It does **not** contain Gemma 3n weights or reproduce Gemma 3n results.
 
-**Explore:** [Published results](https://avinashistoocool.github.io/ple-lab/) · [Browser-only token explorer](https://avinashistoocool.github.io/ple-lab/explorer.html) · [Source](https://github.com/Avinashistoocool/PLE-Lab)
+**Explore:** [Published results](https://avinashistoocool.github.io/PLE-Lab/) · [Browser-only token explorer](https://avinashistoocool.github.io/PLE-Lab/explorer.html) · [Source](https://github.com/Avinashistoocool/PLE-Lab)
 
 ## What this project tests
 
@@ -25,7 +25,7 @@ The token IDs of a forward pass are known before that pass runs. Each newly gene
 - **Train and compare:** a 6-layer baseline and a PLE model with the same dense configuration and token budget.
 - **Offload token rows:** compare GPU, CPU, pinned CPU, fp16/int8 mmap, GPU row caches, and prefetching.
 - **Inspect interpretable token vectors:** compare per-layer slices, cosine nearest neighbours, norm and frequency patterns, PCA maps, gates, and ablations. These views support interpretation; they do not prove a layer has a single semantic role.
-- **Choose an explorer:** the [browser-only subset](https://avinashistoocool.github.io/ple-lab/explorer.html) shows the top 2,000 trained tokens, a morphing 3D PCA map, nearest neighbours, and per-layer vectors without a backend. The full model-backed FastAPI/PyTorch explorer runs **locally** and adds inference, ablations, and run comparisons.
+- **Choose an explorer:** the [browser-only subset](https://avinashistoocool.github.io/PLE-Lab/explorer.html) shows the top 2,000 trained tokens, a morphing 3D PCA map, nearest neighbours, and per-layer vectors without a backend. The full model-backed FastAPI/PyTorch explorer runs **locally** and adds inference, ablations, and run comparisons.
 
 ![PLE Explorer 3D map of per-layer token vectors](explorer/screenshots/final-map3d-dark.png)
 
@@ -88,4 +88,4 @@ The offload tests ran under Windows/WDDM on a shared laptop GPU. Throughput is n
 - [Model and checkpoint contract](docs/CONTRACT.md) — table layout, model paths, and run files.
 - [Offload engine and full benchmark tables](docs/OFFLOAD.md) — sources, cache policies, workload definitions, and caveats.
 - [Local explorer and findings](docs/EXPLORER.md) — visualizations, APIs, ablation conventions, and limitations.
-- [Published static results](https://avinashistoocool.github.io/ple-lab/) — read the results without local checkpoints.
+- [Published static results](https://avinashistoocool.github.io/PLE-Lab/) — read the results without local checkpoints.
