@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#122a2a">
-  <meta name="description" content="PLE-Lab: a measured reproduction of per-layer embeddings, GPU offloading experiments, and an interactive local Explorer. Explore the results in a standalone static exhibit.">
+  <meta name="description" content="PLE-Lab: Small-scale per-layer embeddings (PLE) experiment inspired by Gemma 3n: TinyStories GPT, PLE-table offload benchmarks (GPU/CPU/mmap) and a token explorer.">
   <link rel="canonical" href="https://avinashistoocool.github.io/PLE-Lab/">
   <meta property="og:type" content="website">
   <meta property="og:title" content="PLE-Lab — Give every layer its own vocabulary">
-  <meta property="og:description" content="A measured per-layer embedding experiment: architecture, validation, ablations and GPU memory tradeoffs.">
+  <meta property="og:description" content="Small-scale per-layer embeddings (PLE) experiment inspired by Gemma 3n: TinyStories GPT, PLE-table offload benchmarks (GPU/CPU/mmap) and a token explorer.">
   <meta property="og:url" content="https://avinashistoocool.github.io/PLE-Lab/">
   <meta property="og:image" content="https://avinashistoocool.github.io/PLE-Lab/images/explorer-map.png">
   <title>PLE-Lab · Per-Layer Embeddings, measured</title>
@@ -31,7 +31,7 @@
       <div class="hero-content">
         <p class="eyebrow"><span class="pulse" aria-hidden="true"></span> RESEARCH NOTE / 001 <span class="divider">·</span> SMALL MODEL, REAL MEASUREMENTS</p>
         <h1 id="title">The vocabulary<br>doesn’t have to live <em>on the GPU.</em></h1>
-        <p class="hero-lede">Per-Layer Embeddings give each transformer layer a different view of a token. PLE-Lab builds the model, moves its table off-device, and measures what the layers actually learned.</p>
+        <p class="hero-lede">Per-Layer Embeddings give each transformer layer a different view of a token. PLE-Lab is a small-scale experiment inspired by Gemma 3n: it trains a small GPT on TinyStories, benchmarks reading the PLE table from GPU, CPU and memory-mapped files, and lets you explore the learned token vectors.</p>
         <div class="hero-actions"><a class="button button-primary" href="explorer.html">Try the token explorer <span aria-hidden="true">↗</span></a><a class="button button-quiet" href="#measurements">Explore the evidence <span aria-hidden="true">↗</span></a><a class="button button-quiet" href="https://github.com/Avinashistoocool/PLE-Lab">Browse the code <span aria-hidden="true">↗</span></a></div>
         <p class="hero-footnote">Inspired by the per-layer embedding idea in Gemma 3n · independent small-scale reimplementation without Gemma 3n's AltUp streams; not a Gemma 3n benchmark.</p>
       </div>
