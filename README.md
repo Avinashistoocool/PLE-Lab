@@ -1,8 +1,8 @@
 # PLE Lab: Per-Layer Embeddings for Gemma 3n-style on-device LLM research
 
-PLE Lab trains a small GPT with optional **Per-Layer Embeddings (PLE)** on TinyStories. It measures PLE table access from GPU memory, CPU RAM, and memory-mapped files that stand in for SSD or phone flash. It also lets you inspect trained token vectors by layer. This is an independent, small-scale experiment inspired by the Gemma 3n PLE design. It does **not** contain Gemma 3n weights or reproduce Gemma 3n results.
+PLE Lab trains a small GPT with optional **Per-Layer Embeddings (PLE)** on TinyStories. It measures PLE table access from GPU memory, CPU RAM, and memory-mapped files that stand in for SSD or phone flash. It also lets you inspect trained token vectors by layer. This is an independent, small-scale experiment inspired by the Gemma 3n PLE design. It does not implement Gemma 3n's AltUp streams. It does **not** contain Gemma 3n weights or reproduce Gemma 3n results.
 
-**Explore:** [Published results](https://avinashistoocool.github.io/ple-lab/) · [Browser-only token explorer](https://avinashistoocool.github.io/ple-lab/explorer.html) *(deployment in progress)* · [Source](https://github.com/Avinashistoocool/PLE-Lab)
+**Explore:** [Published results](https://avinashistoocool.github.io/ple-lab/) · [Browser-only token explorer](https://avinashistoocool.github.io/ple-lab/explorer.html) · [Source](https://github.com/Avinashistoocool/PLE-Lab)
 
 ## What this project tests
 
@@ -20,12 +20,12 @@ PLE table source: GPU  |  CPU / pinned RAM  |  mmap fp16 / int8 (SSD-backed file
                                            └─► optional small GPU row cache
 ```
 
-Token IDs are known before the forward pass. The offload engine fetches **PLE table rows**, not whole transformer layers or all model weights. Dense weights remain on the device in the GPU benchmarks. Memory-mapped files approximate flash-backed access, but the measured runs used a warm OS page cache.
+The token IDs of a forward pass are known before that pass runs. Each newly generated token needs its own row when it enters the next pass. The offload engine fetches **PLE table rows**, not whole transformer layers or all model weights. Dense weights remain on the device in the GPU benchmarks. Memory-mapped files approximate flash-backed access, but the measured runs used a warm OS page cache.
 
 - **Train and compare:** a 6-layer baseline and a PLE model with the same dense configuration and token budget.
 - **Offload token rows:** compare GPU, CPU, pinned CPU, fp16/int8 mmap, GPU row caches, and prefetching.
 - **Inspect interpretable token vectors:** compare per-layer slices, cosine nearest neighbours, norm and frequency patterns, PCA maps, gates, and ablations. These views support interpretation; they do not prove a layer has a single semantic role.
-- **Choose an explorer:** the [browser-only subset](https://avinashistoocool.github.io/ple-lab/explorer.html) is being deployed. It will show the top 2,000 trained tokens, a morphing 3D PCA map, nearest neighbours, and per-layer vectors without a backend. The full model-backed FastAPI/PyTorch explorer runs **locally** and adds inference, ablations, and run comparisons.
+- **Choose an explorer:** the [browser-only subset](https://avinashistoocool.github.io/ple-lab/explorer.html) shows the top 2,000 trained tokens, a morphing 3D PCA map, nearest neighbours, and per-layer vectors without a backend. The full model-backed FastAPI/PyTorch explorer runs **locally** and adds inference, ablations, and run comparisons.
 
 ![PLE Explorer 3D map of per-layer token vectors](explorer/screenshots/final-map3d-dark.png)
 
@@ -66,14 +66,14 @@ python -m ple_lab.offload.bench --synthetic --device cuda
 
 ## Measured results
 
-Training used an RTX 4050 Laptop GPU (6 GB), one seed per model, and 24.6 million tokens each. Loss is lower when better; the PLE model has more parameters.
+Training used an RTX 4050 Laptop GPU (6 GB), one seed per model, and 24.576 million sampled training-token positions each (3,000 steps × 16 × 2 × 256) from a 72.4M-token training split. Validation loss is cross-entropy in nats/token on fixed sampled validation windows. Loss is lower when better; the PLE model has more parameters.
 
 | Model | PLE dim | Validation loss | Total parameters | PLE table | Train time |
 |---|---:|---:|---:|---:|---:|
 | Baseline | 0 | 2.0288 | 30.04M | 0 | 11.8 min |
 | PLE | 64 | 2.0198 | 49.80M | 19.32M | 15.1 min |
 
-The 0.009 loss difference is within single-seed noise. It is **not** evidence of a reliable improvement. Sources: [baseline run metadata](runs/baseline-small/config.json) and [PLE run metadata](runs/ple-small/config.json).
+The 0.009 nats/token difference comes from one seed per model. The PLE model also has more parameters and a longer training time. The difference is **not** evidence of a reliable improvement. Sources: [baseline run metadata](runs/baseline-small/config.json) and [PLE run metadata](runs/ple-small/config.json).
 
 | Separate measurement | Observation | Scope |
 |---|---|---|
