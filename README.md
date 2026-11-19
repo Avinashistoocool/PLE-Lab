@@ -1,55 +1,91 @@
-# PLE Lab: Per-Layer Embeddings, an offload engine and an explorer
+# PLE Lab: Per-Layer Embeddings for Gemma 3n-style on-device LLM research
 
-A small, fully measured reproduction of the **Per-Layer Embeddings (PLE)** idea from Google's Gemma 3n. A PLE table gives every transformer layer its own small vector for every token. Because the table is indexed by token ID, which is known before the forward pass, it can live off the GPU and be streamed in a few hundred bytes per token.
+PLE Lab trains a small GPT with optional **Per-Layer Embeddings (PLE)** on TinyStories. It measures PLE table access from GPU memory, CPU RAM, and memory-mapped files that stand in for SSD or phone flash. It also lets you inspect trained token vectors by layer. This is an independent, small-scale experiment inspired by the Gemma 3n PLE design. It does **not** contain Gemma 3n weights or reproduce Gemma 3n results.
 
-The project has three parts:
+**Explore:** [Published results](https://avinashistoocool.github.io/ple-lab/) · [Browser-only token explorer](https://avinashistoocool.github.io/ple-lab/explorer.html) *(deployment in progress)* · [Source](https://github.com/Avinashistoocool/PLE-Lab)
 
-| Part | What it does | Docs |
-|---|---|---|
-| `ple_lab/` (model, data, training) | GPT with optional Gemma-3n-style PLE, trained on TinyStories | `docs/CONTRACT.md` |
-| `ple_lab/offload/` (offload engine) | GPU / CPU / pinned / mmap-fp16 / mmap-int8 table sources, LRU/LFU/static-top-k GPU caches, a prefetcher, and a benchmark | `docs/OFFLOAD.md` |
-| `explorer/` (PLE Explorer) | Web app for token vectors, neighbours, PCA maps, gate activations, per-layer ablations, baseline comparison | `docs/EXPLORER.md` |
+## What this project tests
 
-## Results (RTX 4050 Laptop, 6 GB)
+Ordinary token embeddings feed the model's initial hidden state. PLE adds a **separate token-indexed table** with a small vector for each transformer layer. The model combines each layer's token vector with a context-derived vector. A gate injects the result after that layer's attention and MLP. This is not word2vec: the vectors are learned as part of a language model and can differ across layers.
 
-### Training (same dense config and token budget, one seed each)
-| run | PLE dim | val loss | params (total / PLE table / dense) | tokens | train time |
-|---|---:|---:|---|---:|---:|
-| baseline-small | 0 | 2.0288 | 30.04M / 0 / 30.04M | 24.6M | 11.8 min |
-| ple-small | 64 | 2.0198 | 49.80M / 19.32M / 30.48M | 24.6M | 15.1 min |
+```text
+token IDs ──► ordinary embeddings + positions ──► initial state x₀ ──► GPT blocks ──► logits
+    │                                            │                 ▲
+    └──► PLE table row ──► slice for each layer ─┼─► per-layer input │
+                          (L × p values)        └─► context vectors ┘
+                                  per block: gate(hidden state) × per-layer input
+                                             └─► project + normalize + add to hidden state
 
-The 0.009 loss gap is within single-seed noise, so it isn't claimed as an improvement.
-
-### Offload engine
-- **Table VRAM:** on a 155M-param synthetic table (`runs/synthetic-big`), a 5% static-top-k GPU cache cut table VRAM from **294.8 MB to 14.7 MB (−95%)** with a **95.5–96.5% hit rate**. Peak allocation dropped from 474 to 194 MB for prefill. Throughput changed by roughly −9% to −20%; run-to-run noise on this shared laptop GPU is ±30%.
-- **Data per token:** with a 5% cache, the bytes moved per token fall to 20–504 B. A decode step reads about 50–60 MB of dense weights.
-- **Cache size:** because token frequencies are Zipfian, a 1% LRU cache already serves about 77% of tokens, and going from 5% to 20% adds almost nothing.
-- **int8 tables:** storing the table as int8 instead of fp16 changes val loss from **2.01533 to 2.01535** (50 × 16 × 256 tokens).
-- **Prefetching** did not help; the background thread contends for Python's GIL.
-
-### Explorer findings on `ple-small` (25,500 val predictions)
-- **Ablation:** zeroing all PLE token inputs raises loss by **+0.621 ± 0.008 nats**, and 75.5% of tokens get worse.
-- **Per layer:** layer 0 matters most (+0.090). The single-layer deltas sum to only 0.246, so the layers partly back each other up.
-- **Row norm vs. frequency:** row norms track log token frequency (**Spearman 0.87** over tokens seen in training). Rare rows stay near their initial values.
-- **Neighbours:** full-row nearest neighbours are semantic (" happy" → glad, lucky, cheerful; " dog" → puppy, cat, kitten).
-
-Full tables are in `docs/OFFLOAD.md` and `docs/EXPLORER.md`. Raw data is in `results/`.
-
-## Reproduce
-```powershell
-pip install -r requirements.txt
-python -m ple_lab.data                                   # TinyStories -> data/tinystories/*.bin
-python -m ple_lab.train --name baseline-small --ple-dim 0  --max-iters 3000 --batch-size 16 --grad-accum 2
-python -m ple_lab.train --name ple-small      --ple-dim 64 --max-iters 3000 --batch-size 16 --grad-accum 2
-python scripts\compare_runs.py
-python -m ple_lab.offload.bench --run runs/ple-small --device cuda
-python -m ple_lab.offload.bench --synthetic --device cuda
-python -m explorer.server --runs runs --port 8765          # open http://localhost:8765
-python -m pytest -q tests
+PLE table source: GPU  |  CPU / pinned RAM  |  mmap fp16 / int8 (SSD-backed file)
+                                           └─► optional small GPU row cache
 ```
 
-## Limitations
-- One seed, a small model and 24.6M training tokens.
-- Benchmarks were run on a shared laptop GPU under Windows/WDDM.
-- mmap numbers reflect a warm OS page cache, not cold flash reads.
-- The Gemma-3n-sized table (262k × 8960) benchmark is implemented (`--gemma3n-table`) but was not run.
+Token IDs are known before the forward pass. The offload engine fetches **PLE table rows**, not whole transformer layers or all model weights. Dense weights remain on the device in the GPU benchmarks. Memory-mapped files approximate flash-backed access, but the measured runs used a warm OS page cache.
+
+- **Train and compare:** a 6-layer baseline and a PLE model with the same dense configuration and token budget.
+- **Offload token rows:** compare GPU, CPU, pinned CPU, fp16/int8 mmap, GPU row caches, and prefetching.
+- **Inspect interpretable token vectors:** compare per-layer slices, cosine nearest neighbours, norm and frequency patterns, PCA maps, gates, and ablations. These views support interpretation; they do not prove a layer has a single semantic role.
+- **Choose an explorer:** the [browser-only subset](https://avinashistoocool.github.io/ple-lab/explorer.html) is being deployed. It will show the top 2,000 trained tokens, a morphing 3D PCA map, nearest neighbours, and per-layer vectors without a backend. The full model-backed FastAPI/PyTorch explorer runs **locally** and adds inference, ablations, and run comparisons.
+
+![PLE Explorer 3D map of per-layer token vectors](explorer/screenshots/final-map3d-dark.png)
+
+## Quick start (PowerShell, from a fresh clone)
+
+Use Python with the packages in `requirements.txt`. Run these commands from the repository root. Download TinyStories before training; its tokenized files and trained checkpoints are **not included** in the public repository.
+
+```powershell
+git clone https://github.com/Avinashistoocool/PLE-Lab.git
+cd .\PLE-Lab
+python -m pip install -r requirements.txt
+python -m ple_lab.data
+python -m ple_lab.train --name quick-ple --preset tiny --ple-dim 32 --max-iters 20 --batch-size 4 --eval-iters 2 --eval-interval 10
+python -m explorer.server --runs runs --port 8765
+```
+
+Open [http://127.0.0.1:8765](http://127.0.0.1:8765) and select `quick-ple`. The default data command downloads up to 300 MB of TinyStories training text **and** the validation text, then writes `data\tinystories\train.bin` and `val.bin`. Downloads and tokenization can take time. The short training run only checks the workflow; it does not reproduce the measured results. Training uses CUDA if available, or CPU otherwise. The local explorer defaults to CPU.
+
+For a UI check without training, run `python -m explorer.make_demo_run` before starting the server and select `demo-random`. Its vectors are **random**, not trained. The server needs a local run with `dense.pt`; the tracked `runs\*\config.json` files and the published results do not include checkpoints. The browser-only subset uses precomputed data and does not provide model inference.
+
+## Reproduce the measured runs
+
+After `python -m ple_lab.data`, use the small preset and the recorded settings below. These runs take much longer than the quick start, especially on CPU. Keep the two checkpoints if you want to use Compare in the local explorer.
+
+```powershell
+python -m ple_lab.train --name baseline-small --ple-dim 0 --max-iters 3000 --batch-size 16 --grad-accum 2
+python -m ple_lab.train --name ple-small --ple-dim 64 --max-iters 3000 --batch-size 16 --grad-accum 2
+python scripts\compare_runs.py
+python -m explorer.server --runs runs --port 8765
+```
+
+Optional GPU offload benchmarks use the trained run. The synthetic benchmark creates a **random-initialized** larger table and model in `runs\synthetic-big`; allow disk and memory for its fp16 and int8 table files. Use `--device cuda` only when CUDA is available. The benchmark writes new reports to `results\offload\`.
+
+```powershell
+python -m ple_lab.offload.bench --run runs/ple-small --device cuda
+python -m ple_lab.offload.bench --synthetic --device cuda
+```
+
+## Measured results
+
+Training used an RTX 4050 Laptop GPU (6 GB), one seed per model, and 24.6 million tokens each. Loss is lower when better; the PLE model has more parameters.
+
+| Model | PLE dim | Validation loss | Total parameters | PLE table | Train time |
+|---|---:|---:|---:|---:|---:|
+| Baseline | 0 | 2.0288 | 30.04M | 0 | 11.8 min |
+| PLE | 64 | 2.0198 | 49.80M | 19.32M | 15.1 min |
+
+The 0.009 loss difference is within single-seed noise. It is **not** evidence of a reliable improvement. Sources: [baseline run metadata](runs/baseline-small/config.json) and [PLE run metadata](runs/ple-small/config.json).
+
+| Separate measurement | Observation | Scope |
+|---|---|---|
+| Synthetic-big table offload | A 5% static-top-k GPU cache cut table VRAM from 294.75 to 14.74 MiB (95% less), with a 95.5% hit rate. Prefill throughput was 4,387 vs 5,453 tokens/s with the full table on GPU. | Random-initialized 154.5M-parameter PLE table; [benchmark JSON](results/offload/synthetic-big-20261112-192517.json) |
+| Trained-table int8 storage | Validation loss was 2.01533 (fp16) vs 2.01535 (int8); Δ ≈ +0.00002. | Fixed validation windows, 50 batches × 16 × 256 tokens; [benchmark JSON](results/offload/ple-small-20261112-192148.json) |
+| Trained-model ablation | Removing the PLE **token part** at all layers raised mean loss by +0.621 nats. The context part stayed active. | 25,500 validation predictions; [explorer findings](results/explorer_findings.json) |
+
+The offload tests ran under Windows/WDDM on a shared laptop GPU. Throughput is noisy. mmap results reflect a warm OS page cache, **not** cold SSD latency or a phone deployment. The benchmark's full-model decode repeatedly evaluates a sliding window; it has no KV cache. The table-only `decode-1` workload is separate. This project tests an on-device LLM *design idea*, not end-to-end phone performance.
+
+## Documentation
+
+- [Model and checkpoint contract](docs/CONTRACT.md) — table layout, model paths, and run files.
+- [Offload engine and full benchmark tables](docs/OFFLOAD.md) — sources, cache policies, workload definitions, and caveats.
+- [Local explorer and findings](docs/EXPLORER.md) — visualizations, APIs, ablation conventions, and limitations.
+- [Published static results](https://avinashistoocool.github.io/ple-lab/) — read the results without local checkpoints.
