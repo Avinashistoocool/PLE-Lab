@@ -5,8 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#122a2a">
   <meta name="description" content="PLE-Lab: Small-scale per-layer embeddings (PLE) experiment inspired by Gemma 3n: TinyStories GPT, PLE-table offload benchmarks (GPU/CPU/mmap) and a token explorer.">
+<meta name="author" content="Avinash Chandra Gupta">
   <link rel="canonical" href="https://avinashistoocool.github.io/PLE-Lab/">
   <meta property="og:type" content="website">
+<meta property="og:site_name" content="Avinash Chandra Gupta">
   <meta property="og:title" content="PLE-Lab — Give every layer its own vocabulary">
   <meta property="og:description" content="Small-scale per-layer embeddings (PLE) experiment inspired by Gemma 3n: TinyStories GPT, PLE-table offload benchmarks (GPU/CPU/mmap) and a token explorer.">
   <meta property="og:url" content="https://avinashistoocool.github.io/PLE-Lab/">
@@ -15,6 +17,52 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%23122a2a'/%3E%3Ctext x='8' y='44' font-family='Georgia' font-size='42' fill='%23df603d'%3EP%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="styles.css">
   <script src="app.js" defer></script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebPage",
+      "@id": "https://avinashistoocool.github.io/PLE-Lab/#webpage",
+      "url": "https://avinashistoocool.github.io/PLE-Lab/",
+      "name": "PLE-Lab · Per-Layer Embeddings, measured",
+      "author": {
+        "@id": "https://avinashistoocool.github.io/#person"
+      },
+      "mainEntity": {
+        "@id": "https://avinashistoocool.github.io/PLE-Lab/#software"
+      }
+    },
+    {
+      "@type": "SoftwareSourceCode",
+      "@id": "https://avinashistoocool.github.io/PLE-Lab/#software",
+      "name": "PLE Lab",
+      "description": "Small-scale per-layer embeddings (PLE) experiment inspired by Gemma 3n: TinyStories GPT, PLE-table offload benchmarks (GPU/CPU/mmap) and a token explorer.",
+      "url": "https://avinashistoocool.github.io/PLE-Lab/",
+      "codeRepository": "https://github.com/Avinashistoocool/PLE-Lab",
+      "programmingLanguage": [
+        "Python",
+        "JavaScript"
+      ],
+      "author": {
+        "@id": "https://avinashistoocool.github.io/#person"
+      }
+    },
+    {
+      "@type": "Person",
+      "@id": "https://avinashistoocool.github.io/#person",
+      "name": "Avinash Chandra Gupta",
+      "url": "https://avinashistoocool.github.io/",
+      "sameAs": [
+        "https://github.com/Avinashistoocool",
+        "https://www.linkedin.com/in/avinashistoocool",
+        "https://x.com/suprcoolavinash",
+        "https://buymeacoffee.com/avinashistoocool"
+      ]
+    }
+  ]
+}
+</script>
 </head>
 <body>
   <a class="skip" href="#main">Skip to content</a>
@@ -106,6 +154,6 @@ python -m explorer.server --runs runs --port 8765
 <span class="code-comment"># Open http://127.0.0.1:8765</span></code></pre><p>The public repository does <strong>not</strong> include trained checkpoints: model weights and table binaries under <code>runs/</code> are git-ignored. For the measured <code>ple-small</code> model instead of the random demo, prepare TinyStories and train both runs using <a href="https://github.com/Avinashistoocool/PLE-Lab#reproduce">README reproduction steps ↗</a>.</p></div></div>
     </div></section>
   </main>
-  <footer class="footer"><div><a class="wordmark" href="https://avinashistoocool.github.io/"><span class="mark">A/</span> avinash</a><p>PLE-Lab · a reproducible question about memory, not a claim of model improvement.</p></div><div class="footer-links"><a href="explorer.html">Try the public token map ↗</a><a href="https://avinashistoocool.github.io/">← avinash</a><a href="https://avinashistoocool.github.io/projects/">All projects</a><a href="https://github.com/Avinashistoocool/PLE-Lab">Source repository ↗</a><span id="docs" class="docs-links">Docs: <a href="https://github.com/Avinashistoocool/PLE-Lab/blob/master/docs/EXPLORER.md">EXPLORER.md ↗</a> · <a href="https://github.com/Avinashistoocool/PLE-Lab/blob/master/docs/OFFLOAD.md">OFFLOAD.md ↗</a> · <a href="https://github.com/Avinashistoocool/PLE-Lab/blob/master/docs/CONTRACT.md">CONTRACT.md ↗</a></span><a href="#main">Back to top ↑</a></div></footer>
+  <footer class="footer"><div><a class="wordmark" href="https://avinashistoocool.github.io/"><span class="mark">A/</span> avinash</a><p>PLE-Lab · a reproducible question about memory, not a claim of model improvement.</p><p class="byline">By <a href="https://avinashistoocool.github.io/">Avinash Chandra Gupta</a></p></div><div class="footer-links"><a href="explorer.html">Try the public token map ↗</a><a href="https://avinashistoocool.github.io/">← avinash</a><a href="https://avinashistoocool.github.io/projects/">All projects</a><a href="https://github.com/Avinashistoocool/PLE-Lab">Source repository ↗</a><span id="docs" class="docs-links">Docs: <a href="https://github.com/Avinashistoocool/PLE-Lab/blob/master/docs/EXPLORER.md">EXPLORER.md ↗</a> · <a href="https://github.com/Avinashistoocool/PLE-Lab/blob/master/docs/OFFLOAD.md">OFFLOAD.md ↗</a> · <a href="https://github.com/Avinashistoocool/PLE-Lab/blob/master/docs/CONTRACT.md">CONTRACT.md ↗</a></span><a href="#main">Back to top ↑</a></div></footer>
 </body>
 </html>

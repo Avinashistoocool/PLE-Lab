@@ -5,8 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#122a2a">
   <meta name="description" content="Explore published per-layer token vectors from a small GPT trained on TinyStories. Static data, no server or model inference.">
+<meta name="author" content="Avinash Chandra Gupta">
   <link rel="canonical" href="https://avinashistoocool.github.io/PLE-Lab/explorer.html">
   <meta property="og:type" content="website">
+<meta property="og:site_name" content="Avinash Chandra Gupta">
   <meta property="og:title" content="Token atlas · PLE-Lab">
   <meta property="og:description" content="Explore published per-layer token vectors from a small GPT trained on TinyStories. Static data, no server or model inference.">
   <meta property="og:url" content="https://avinashistoocool.github.io/PLE-Lab/explorer.html">
@@ -15,6 +17,52 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%23122a2a'/%3E%3Ctext x='8' y='44' font-family='Georgia' font-size='42' fill='%23df603d'%3EP%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="explorer.css">
   <script src="explorer.js" defer></script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebPage",
+      "@id": "https://avinashistoocool.github.io/PLE-Lab/explorer.html#webpage",
+      "url": "https://avinashistoocool.github.io/PLE-Lab/explorer.html",
+      "name": "Token atlas · PLE-Lab",
+      "author": {
+        "@id": "https://avinashistoocool.github.io/#person"
+      },
+      "about": {
+        "@id": "https://avinashistoocool.github.io/PLE-Lab/#software"
+      }
+    },
+    {
+      "@type": "SoftwareSourceCode",
+      "@id": "https://avinashistoocool.github.io/PLE-Lab/#software",
+      "name": "PLE Lab",
+      "description": "Small-scale per-layer embeddings (PLE) experiment inspired by Gemma 3n: TinyStories GPT, PLE-table offload benchmarks (GPU/CPU/mmap) and a token explorer.",
+      "url": "https://avinashistoocool.github.io/PLE-Lab/",
+      "codeRepository": "https://github.com/Avinashistoocool/PLE-Lab",
+      "programmingLanguage": [
+        "Python",
+        "JavaScript"
+      ],
+      "author": {
+        "@id": "https://avinashistoocool.github.io/#person"
+      }
+    },
+    {
+      "@type": "Person",
+      "@id": "https://avinashistoocool.github.io/#person",
+      "name": "Avinash Chandra Gupta",
+      "url": "https://avinashistoocool.github.io/",
+      "sameAs": [
+        "https://github.com/Avinashistoocool",
+        "https://www.linkedin.com/in/avinashistoocool",
+        "https://x.com/suprcoolavinash",
+        "https://buymeacoffee.com/avinashistoocool"
+      ]
+    }
+  ]
+}
+</script>
 </head>
 <body>
   <a class="skip" href="#main">Skip to explorer</a>
@@ -72,6 +120,6 @@
       <div class="about-grid"><h2>A small table,<br><em>not a model in your browser.</em></h2><div><p>These are pre-exported rows from a trained small GPT on TinyStories, not Gemma 3n. Each token has six 64-dimensional learned PLE slices. The map stores three PCA coordinates per slice; the heatmap and cosine search reconstruct vector values from signed 8-bit integers multiplied by each row’s published float32 scale. Quantization means these approximate the original float vectors; similarity is exact for this published, quantized subset.</p><p>This page cannot generate text, run PyTorch, or perform live ablations. To try the full model-backed explorer locally, clone <a href="https://github.com/Avinashistoocool/PLE-Lab">PLE-Lab ↗</a>, install <code>pip install -r requirements.txt</code>, prepare a run (or <code>python -m explorer.make_demo_run</code> for a random demonstration), then launch <code>python -m explorer.server --runs runs --port 8765</code> and open <code>http://127.0.0.1:8765</code>. For trained results, follow the <a href="https://github.com/Avinashistoocool/PLE-Lab#reproduce">training instructions ↗</a>; the random demo is not the measured model.</p><a class="back-link" href="./">← Back to the PLE-Lab results</a></div></div>
     </section>
   </main>
-  <footer><span>PLE-LAB / STATIC TOKEN ATLAS</span><span><a href="./">← PLE-Lab</a> · <a href="https://avinashistoocool.github.io/">← avinash</a> · <a href="https://avinashistoocool.github.io/projects/">All projects</a> · <a href="https://github.com/Avinashistoocool/PLE-Lab/blob/master/docs/EXPLORER.md">Docs ↗</a> · <a href="https://github.com/Avinashistoocool/PLE-Lab">Source repository ↗</a></span></footer>
+  <footer><span>PLE-LAB / STATIC TOKEN ATLAS · By <a href="https://avinashistoocool.github.io/">Avinash Chandra Gupta</a></span><span><a href="./">← PLE-Lab</a> · <a href="https://avinashistoocool.github.io/">← avinash</a> · <a href="https://avinashistoocool.github.io/projects/">All projects</a> · <a href="https://github.com/Avinashistoocool/PLE-Lab/blob/master/docs/EXPLORER.md">Docs ↗</a> · <a href="https://github.com/Avinashistoocool/PLE-Lab">Source repository ↗</a></span></footer>
 </body>
 </html>
